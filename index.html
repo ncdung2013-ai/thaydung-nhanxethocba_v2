@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trợ lý Nhận xét Học bạ</title>
     
-    <!-- 1. THƯ VIỆN CẦN THIẾT -->
+    <!-- 1. CÁC THƯ VIỆN CỐT LÕI -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -15,7 +15,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- 2. STYLE TÙY CHỈNH -->
+    <!-- 2. STYLE -->
     <style>
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
         .cursor-wait { cursor: wait; }
@@ -23,7 +23,7 @@
         .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        /* Tùy chỉnh thanh cuộn */
+        /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -40,7 +40,7 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 
-    <!-- 3. CẤU HÌNH API GENAI -->
+    <!-- 3. CẤU HÌNH AI (Phiên bản mới nhất) -->
     <script type="module">
         import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.1.1";
         window.GoogleGenAI = GoogleGenAI;
@@ -77,11 +77,14 @@
         const html2canvas = window.html2canvas;
         const { jsPDF } = window.jspdf;
 
-        // --- ENUMS & TYPES ---
+        // --- CẤU HÌNH HỆ THỐNG ---
         const TeacherRole = { SUBJECT: 'GVBM', HOMEROOM: 'GVCN' };
         const SUBJECTS = ["Toán", "Văn", "LS & ĐL", "KHTN", "Tin học", "Ng.ngữ", "GDCD", "C.nghệ", "GDTC", "Nghệ thuật", "NDGDCĐP", "HĐTN&HN", "Khác ..."];
+        
+        // Danh sách Model để thử (Ưu tiên bản ổn định trước)
+        const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
 
-        // --- SERVICES: EXCEL ---
+        // --- LOGIC EXCEL (GIỮ NGUYÊN) ---
         const isNamePart = (val) => {
             if (typeof val !== 'string') return false;
             const str = val.trim();
@@ -89,7 +92,7 @@
             if (str.length < 2 && str.toUpperCase() !== 'Ý') return false;
             const keywords = ['stt', 'họ', 'tên', 'thứ', 'ngày', 'tháng', 'năm', 'lớp', 'trường', 'điểm', 'kết', 'quả', 'học', 'kỳ', 'môn', 'giáo', 'viên', 'tbm', 'đtb', 'ubnd', 'thcs', 'thpt', 'phòng', 'sở', 'đào', 'tạo', 'cộng', 'hòa', 'xã', 'huyện', 'tỉnh', 'thành', 'phố', 'độc', 'lập', 'số', 'lượng', 'tỉ', 'lệ', 'tổng', 'sinh', 'đạt', 'chưa'];
             const lower = str.toLowerCase();
-            if (keywords.some(k => lower === k)) return false; // Strict check for exact keywords
+            if (keywords.some(k => lower === k)) return false;
             if (['trường', 'phòng', 'ủy', 'ban', 'cộng hòa'].some(k => lower.includes(k))) return false;
             if (/^(T|K|TB|Y|G|Đ|CĐ|TX\d|HK\d)$/.test(str.toUpperCase())) return false;
             return true;
@@ -177,18 +180,45 @@
             } catch (e) { console.error(e); return { students: [] }; }
         };
 
-        // --- SERVICES: GEMINI AI ---
+        // --- CẤU HÌNH AI THÔNG MINH ---
         const getAIClient = (key) => {
             if (!key) throw new Error("MISSING_API_KEY");
-            if (!window.GoogleGenAI) throw new Error("Đang tải thư viện AI... Vui lòng thử lại sau giây lát.");
+            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong.");
             return new window.GoogleGenAI({ apiKey: key });
+        };
+
+        const testApiConnection = async (apiKey) => {
+            const ai = new window.GoogleGenAI({ apiKey });
+            let lastError = null;
+
+            // Thử lần lượt các model để tìm cái nào Key này dùng được
+            for (const model of CANDIDATE_MODELS) {
+                try {
+                    await ai.models.generateContent({ 
+                        model: model, 
+                        contents: "Hello" 
+                    });
+                    // Nếu thành công, lưu lại model này để dùng sau
+                    localStorage.setItem('GEMINI_ACTIVE_MODEL', model);
+                    return true;
+                } catch (e) {
+                    lastError = e;
+                    // Nếu lỗi do Key sai hoặc bị chặn (400, 403), dừng ngay không thử model khác
+                    const msg = e.message || "";
+                    if (msg.includes("400") || msg.includes("INVALID_ARGUMENT") || msg.includes("API_KEY_INVALID") || msg.includes("403")) {
+                        throw e;
+                    }
+                }
+            }
+            throw lastError; // Ném lỗi cuối cùng nếu tất cả đều thất bại
         };
 
         const generateCommentsBatch = async (students, role, subjectName) => {
             const key = localStorage.getItem('GEMINI_API_KEY');
             const ai = getAIClient(key);
-            // Ưu tiên model nhanh và ổn định
-            const model = "gemini-2.0-flash"; 
+            
+            // Dùng model đã test thành công, hoặc mặc định là bản ổn định nhất
+            const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
             
             const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
             let prompt = `Bạn là giáo viên. Viết nhận xét ngắn gọn (TỐI ĐA ${wordLimit} từ).`;
@@ -213,7 +243,7 @@
                 : { id: s.id, name: s.name, kqht: s.academicResult, kqrl: s.conductRating, absences: s.absences }
             );
 
-            // Retry logic đơn giản
+            // Retry nếu server bận
             let retries = 3;
             while (retries > 0) {
                 try {
@@ -232,9 +262,9 @@
                     if (Array.isArray(data)) data.forEach(item => map.set(item.id, item.comment));
                     return map;
                 } catch (e) {
-                    if (e.message && e.message.includes("429")) {
+                    if (e.message && (e.message.includes("429") || e.message.includes("503"))) {
                         retries--;
-                        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+                        await new Promise(r => setTimeout(r, 2000));
                     } else {
                         throw e;
                     }
@@ -246,7 +276,7 @@
         const extractDataFromMedia = async (base64, mimeType, role) => {
             const key = localStorage.getItem('GEMINI_API_KEY');
             const ai = getAIClient(key);
-            const model = "gemini-2.0-flash";
+            const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
             
             const prompt = role === TeacherRole.SUBJECT 
                 ? "Trích xuất danh sách học sinh: Họ tên, Điểm tổng kết (hoặc xếp loại). JSON format."
@@ -297,24 +327,31 @@
             return { students, detectedSubject: raw.subjectName };
         };
 
-        const testApiConnection = async (apiKey) => {
-            const ai = new window.GoogleGenAI({ apiKey });
-            await ai.models.generateContent({ model: "gemini-2.0-flash", contents: "Hi" });
-        };
-
-        // --- COMPONENT: API KEY MODAL ---
+        // --- COMPONENTS ---
         const ApiKeyModal = ({ onSave, onClear, hasKey }) => {
             const [key, setKey] = useState("");
-            const [status, setStatus] = useState("");
+            const [status, setStatus] = useState({ type: 'none', msg: '' });
             const [loading, setLoading] = useState(false);
 
             const check = async () => {
-                if (!key) return;
-                setLoading(true); setStatus("");
+                const cleanKey = key.trim();
+                if (!cleanKey) return;
+                
+                setLoading(true); setStatus({ type: 'none', msg: '' });
                 try {
-                    await testApiConnection(key.trim());
-                    onSave(key.trim());
-                } catch (e) { setStatus("Key không hợp lệ hoặc lỗi mạng (429/400)."); }
+                    await testApiConnection(cleanKey);
+                    setStatus({ type: 'success', msg: 'Key hợp lệ! Đang lưu...' });
+                    setTimeout(() => onSave(cleanKey), 1000);
+                } catch (e) { 
+                    console.error(e);
+                    let m = e.message || "";
+                    if (m.includes("400") || m.includes("INVALID")) m = "Key không đúng. Hãy copy chính xác từng ký tự.";
+                    else if (m.includes("403")) m = "Key bị chặn hoặc chưa kích hoạt.";
+                    else if (m.includes("429")) m = "Server đang bận. Hãy thử lại sau 1 phút.";
+                    else if (m.includes("404")) m = "Lỗi kết nối Model. Đang thử lại...";
+                    else m = "Lỗi kết nối: " + m.slice(0, 50);
+                    setStatus({ type: 'error', msg: m });
+                }
                 setLoading(false);
             };
 
@@ -333,11 +370,12 @@
                                 <p>2. Nhấn <b>Create API key</b>.</p>
                                 <p>3. Copy mã bắt đầu bằng <code>AIza...</code> dán vào dưới.</p>
                             </div>
-                            <input type="password" value={key} onChange={e => {setKey(e.target.value); setStatus('');}} onKeyDown={e => e.key==='Enter' && check()} placeholder="Dán API Key vào đây..." className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" />
-                            {status && <p className="text-red-500 text-sm font-medium">{status}</p>}
+                            <input type="password" value={key} onChange={e => {setKey(e.target.value); setStatus({type:'none',msg:''});}} onKeyDown={e => e.key==='Enter' && check()} placeholder="Dán API Key vào đây..." className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" />
+                            {status.type === 'error' && <p className="text-red-500 text-sm font-bold animate-pulse">{status.msg}</p>}
+                            {status.type === 'success' && <p className="text-green-600 text-sm font-bold">{status.msg}</p>}
                             <div className="flex flex-col gap-2">
-                                <button onClick={check} disabled={loading || !key} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all shadow-lg disabled:opacity-50">
-                                    {loading ? "Đang kiểm tra..." : "Lưu & Bắt đầu"}
+                                <button onClick={check} disabled={loading || !key} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all shadow-lg disabled:opacity-50 flex justify-center items-center gap-2">
+                                    {loading ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang kiểm tra...</> : "Lưu & Bắt đầu"}
                                 </button>
                                 {hasKey && <button onClick={() => {onClear(); setKey('');}} className="w-full py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition-colors">Xóa Key cũ</button>}
                             </div>
@@ -347,7 +385,7 @@
             );
         };
 
-        // --- COMPONENT: STUDENT LIST ---
+        // --- COMPONENT: STUDENT LIST (GIỮ NGUYÊN) ---
         const StudentList = ({ students, role, subjectName, onUpdate, onGenOne, onGenAll, onDelete, onChangeSubject, isGen }) => {
             const tableRef = useRef();
             const [colWidths, setColWidths] = useState({ stt: 50, name: 200, result: 150, comment: 400, action: 120 });
@@ -452,7 +490,7 @@
             );
         };
 
-        // --- COMPONENT: APP ---
+        // --- MAIN APP ---
         function App() {
             const [role, setRole] = useState(TeacherRole.SUBJECT);
             const [students, setStudents] = useState([]);
@@ -482,7 +520,7 @@
                         const map = await generateCommentsBatch(chunk, role, sub);
                         setStudents(prev => prev.map(s => map.has(s.id) ? {...s, comment: map.get(s.id), isProcessing: false} : (chunk.find(c => c.id === s.id) ? {...s, isProcessing: false} : s)));
                         if (i + chunkSize < targets.length) {
-                            for (let t = 4; t > 0; t--) { setStatus(`Nghỉ ${t}s để Google không chặn...`); await new Promise(r => setTimeout(r, 1000)); }
+                            for (let t = 4; t > 0; t--) { setStatus(`Nghỉ ${t}s để tránh nghẽn mạng...`); await new Promise(r => setTimeout(r, 1000)); }
                         }
                     }
                     setStatus("");
