@@ -3,336 +3,214 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trợ lý Nhận xét Học bạ (Phiên bản chạy ngay)</title>
+    <title>Trợ lý Nhận xét Học bạ (Bản chạy ngay)</title>
     
-    <!-- 1. TẢI CÁC THƯ VIỆN CẦN THIẾT TỪ CDN (Server lưu trữ quốc tế) -->
-    <!-- Tailwind CSS (Giao diện) -->
+    <!-- 1. CÁC THƯ VIỆN CỐT LÕI (Load từ Server quốc tế đảm bảo tốc độ) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM (Core) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Excel & PDF Tools -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-    <!-- Babel (Dịch code React ngay trên trình duyệt) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Cấu hình Giao diện -->
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: { sans: ['Inter', 'sans-serif'] },
-            colors: { primary: '#0F52BA', secondary: '#E1E8F0' },
-            animation: { 'fade-in': 'fadeIn 0.3s ease-out' },
-            keyframes: { fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } } }
-          }
-        }
-      }
-    </script>
     <style>
-        body { background-color: #f8fafc; }
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
         .cursor-wait { cursor: wait; }
+        /* Hiệu ứng loading */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
     </style>
+
+    <!-- BẮT LỖI TOÀN CỤC: Nếu web trắng tinh, nó sẽ hiện lỗi ở đây -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            document.getElementById('error-overlay').style.display = 'flex';
+            document.getElementById('error-msg').innerText = 
+                "Lỗi kỹ thuật: " + message + "\nTại dòng: " + lineno;
+        };
+    </script>
 <script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5",
+    "html2canvas": "https://esm.sh/html2canvas@^1.4.1",
+    "jspdf": "https://esm.sh/jspdf@^4.0.0",
     "path": "https://esm.sh/path@^0.12.7",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
-    "jspdf": "https://esm.sh/jspdf@^4.0.0",
-    "html2canvas": "https://esm.sh/html2canvas@^1.4.1",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
 </head>
 <body>
+    <!-- Màn hình báo lỗi (Mặc định ẩn) -->
+    <div id="error-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; padding: 20px;">
+        <h2 style="font-size: 24px; color: #ff6b6b; font-weight: bold; margin-bottom: 10px;">⚠️ Đã xảy ra lỗi!</h2>
+        <pre id="error-msg" style="background: #333; padding: 15px; border-radius: 8px; max-width: 800px; white-space: pre-wrap;"></pre>
+        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer;">Tải lại trang</button>
+    </div>
+
     <div id="root"></div>
 
-    <!-- 2. CẦU NỐI AI: Tải thư viện Google GenAI riêng biệt -->
+    <!-- 2. CẦU NỐI AI (Google Gemini) -->
     <script type="module">
         import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.1.1";
-        // Gán vào biến toàn cục để React dùng được
         window.GoogleGenAI = GoogleGenAI;
         window.GoogleGenAIType = Type;
     </script>
 
-    <!-- 3. CODE ỨNG DỤNG CHÍNH (React) -->
+    <!-- 3. CODE ỨNG DỤNG (Đã gộp tất cả vào đây) -->
     <script type="text/babel">
-        // Lấy các thư viện đã tải ở trên ra dùng
         const { useState, useEffect, useRef, useCallback } = React;
         const XLSX = window.XLSX;
         const html2canvas = window.html2canvas;
         const { jsPDF } = window.jspdf;
 
-        // Định nghĩa các hằng số (Thay cho Enum)
-        const TeacherRole = {
-            SUBJECT: 'GVBM',
-            HOMEROOM: 'GVCN'
-        };
+        // --- CẤU HÌNH ---
+        const TeacherRole = { SUBJECT: 'GVBM', HOMEROOM: 'GVCN' };
 
-        // --- CÁC HÀM XỬ LÝ LOGIC (SERVICES) ---
-
-        // 1. Xử lý Excel/Text
+        // --- LOGIC XỬ LÝ EXCEL & TEXT ---
         const isNamePart = (val) => {
             if (typeof val !== 'string') return false;
             const str = val.trim();
-            if (str.length === 0) return false;
-            if (/\d/.test(str)) return false; 
+            if (str.length === 0 || /\d/.test(str)) return false; 
             if (str.length < 2 && str.toUpperCase() !== 'Ý') return false;
-            const keywords = [
-                'stt', 'họ', 'tên', 'thứ', 'ngày', 'tháng', 'năm', 'lớp', 'trường', 
-                'dân', 'tộc', 'nữ', 'nam', 'điểm', 'trung', 'bình', 'xếp', 'loại',
-                'ghi', 'chú', 'kết', 'quả', 'học', 'kỳ', 'môn', 
-                'gdcd', 'công', 'nghệ', 'tin', 'thể', 'giáo', 'viên', 'tbm', 'đtb', 
-                'ubnd', 'thcs', 'thpt', 'phòng', 'sở', 'đào', 'tạo', 'cộng', 'hòa',
-                'xã', 'huyện', 'tỉnh', 'thành', 'phố', 'độc', 'lập', 'tự', 'do',
-                'số', 'lượng', 'tỉ', 'lệ', 'tổng', 'sinh', 'đạt', 'chưa'
-            ];
+            const keywords = ['stt', 'họ', 'tên', 'thứ', 'ngày', 'tháng', 'năm', 'lớp', 'trường', 'điểm', 'kết', 'quả', 'học', 'kỳ', 'môn', 'giáo', 'viên', 'tbm', 'đtb', 'ubnd', 'thcs', 'thpt', 'phòng', 'sở', 'đào', 'tạo', 'cộng', 'hòa', 'xã', 'huyện', 'tỉnh', 'thành', 'phố', 'độc', 'lập', 'số', 'lượng', 'tỉ', 'lệ', 'tổng', 'sinh', 'đạt', 'chưa'];
             const lower = str.toLowerCase();
-            if (keywords.some(k => lower === k)) return false;
-            if (['trường', 'phòng', 'ủy', 'ban', 'cộng hòa'].some(k => lower.includes(k))) return false;
+            if (keywords.some(k => lower.includes(k))) return false;
             if (/^(T|K|TB|Y|G|Đ|CĐ|TX\d|HK\d)$/.test(str.toUpperCase())) return false;
             return true;
         };
 
         const detectSubject = (headers) => {
-            const flatHeaders = headers.flat().join(' ').toLowerCase();
-            if (flatHeaders.includes('toán')) return 'Toán';
-            if (flatHeaders.includes('văn') || flatHeaders.includes('việt') || flatHeaders.includes('ngữ')) return 'Văn';
-            if (flatHeaders.includes('lịch sử') || flatHeaders.includes('địa lý') || flatHeaders.includes('sử') || flatHeaders.includes('địa')) return 'LS & ĐL';
-            if (flatHeaders.includes('khtn') || flatHeaders.includes('lý') || flatHeaders.includes('hóa') || flatHeaders.includes('sinh')) return 'KHTN';
-            if (flatHeaders.includes('tin')) return 'Tin học';
-            if (flatHeaders.includes('anh') || flatHeaders.includes('ngoại ngữ')) return 'Ng.ngữ';
-            if (flatHeaders.includes('gdcd') || flatHeaders.includes('công dân')) return 'GDCD';
-            if (flatHeaders.includes('công nghệ')) return 'C.nghệ';
-            if (flatHeaders.includes('thể') || flatHeaders.includes('gdtc')) return 'GDTC';
-            if (flatHeaders.includes('nhạc') || flatHeaders.includes('mỹ thuật') || flatHeaders.includes('nghệ thuật')) return 'Nghệ thuật';
-            if (flatHeaders.includes('địa phương') || flatHeaders.includes('ndgdcđp')) return 'NDGDCĐP';
-            if (flatHeaders.includes('trải nghiệm') || flatHeaders.includes('hướng nghiệp') || flatHeaders.includes('hđtn')) return 'HĐTN&HN';
+            const flat = headers.flat().join(' ').toLowerCase();
+            if (flat.includes('toán')) return 'Toán';
+            if (flat.includes('văn') || flat.includes('việt') || flat.includes('ngữ')) return 'Văn';
+            if (flat.includes('lịch sử') || flat.includes('địa lý') || flat.includes('sử') || flat.includes('địa')) return 'LS & ĐL';
+            if (flat.includes('khtn') || flat.includes('lý') || flat.includes('hóa') || flat.includes('sinh')) return 'KHTN';
+            if (flat.includes('tin')) return 'Tin học';
+            if (flat.includes('anh') || flat.includes('ngoại ngữ')) return 'Ng.ngữ';
+            if (flat.includes('gdcd') || flat.includes('công dân')) return 'GDCD';
+            if (flat.includes('công nghệ')) return 'C.nghệ';
+            if (flat.includes('thể') || flat.includes('gdtc')) return 'GDTC';
+            if (flat.includes('nhạc') || flat.includes('mỹ') || flat.includes('nghệ')) return 'Nghệ thuật';
             return undefined;
         };
 
         const parseExcelData = (fileData, role) => {
             try {
-                let workbook = (typeof fileData === 'string') 
-                    ? XLSX.read(fileData, { type: 'string' }) 
-                    : XLSX.read(fileData, { type: 'array' });
+                let workbook = (typeof fileData === 'string') ? XLSX.read(fileData, { type: 'string' }) : XLSX.read(fileData, { type: 'array' });
+                if (!workbook.SheetNames.length) return { students: [] };
+                const ws = workbook.Sheets[workbook.SheetNames[0]];
+                const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                if (!rawData.length) return { students: [] };
 
-                if (!workbook.SheetNames || workbook.SheetNames.length === 0) return { students: [] };
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                
-                if (!rawData || rawData.length === 0) return { students: [] };
-
-                const headerRows = rawData.slice(0, 5);
-                const detectedSubject = detectSubject(headerRows);
+                const detectedSubject = detectSubject(rawData.slice(0, 5));
                 const students = [];
 
                 rawData.forEach((row, rowIndex) => {
                     if (!Array.isArray(row) || row.length === 0) return;
-                    
-                    // Tìm tên học sinh
-                    let nameParts = [];
-                    let nameEndIndex = -1;
-                    
-                    // Skip rows that look like headers based on first cell being text and not number
+                    // Tìm tên
+                    let nameParts = [], nameEndIndex = -1;
                     const firstCell = row[0];
                     let hasIndex = typeof firstCell === 'number' || (typeof firstCell === 'string' && /^\d+$/.test(firstCell.trim()));
 
                     for (let i = 0; i < row.length; i++) {
                         const cell = row[i];
-                        if (nameParts.length === 0 && hasIndex && i === 0) continue; // Skip STT column
-
-                        if (isNamePart(cell)) {
-                            nameParts.push(String(cell).trim());
-                            nameEndIndex = i;
-                        } else if (nameParts.length > 0 && (cell === undefined || cell === null || String(cell).trim() === '')) {
-                            const nextCell = row[i+1];
-                            if (!isNamePart(nextCell)) break; 
-                        } else if (nameParts.length > 0) {
-                            break;
-                        }
+                        if (nameParts.length === 0 && hasIndex && i === 0) continue;
+                        if (isNamePart(cell)) { nameParts.push(String(cell).trim()); nameEndIndex = i; }
+                        else if (nameParts.length > 0 && (!cell || String(cell).trim() === '')) { 
+                            if (!isNamePart(row[i+1])) break; 
+                        } else if (nameParts.length > 0) break;
                     }
 
                     const fullName = nameParts.join(' ').trim();
                     if (!fullName || fullName.length < 2) if (fullName !== 'Ý') return;
-                    
-                    const upperName = fullName.toUpperCase();
-                    if (upperName.includes("TRƯỜNG") || upperName.includes("THCS") || upperName.includes("SỐ LƯỢNG") || upperName.includes("TỔNG CỘNG")) return;
+                    if (fullName.toUpperCase().includes("TRƯỜNG") || fullName.toUpperCase().includes("THCS")) return;
 
+                    // Tìm điểm/kết quả
                     let subjectScore, subjectRating, academicResult, conductRating, absences;
-
+                    
                     if (role === TeacherRole.SUBJECT) {
                         for (let j = row.length - 1; j > nameEndIndex; j--) {
                             const cell = row[j];
                             if (cell == null || String(cell).trim() === '') continue;
-                            const cellStr = String(cell).trim().replace(',', '.');
-                            const cellNum = parseFloat(cellStr);
-                            if (!isNaN(cellNum)) {
-                                if (cellNum >= 0 && cellNum <= 10) { subjectScore = cellNum; break; }
-                            } else {
-                                const upper = cellStr.toUpperCase();
-                                if (/^(T|K|Đ|CĐ|TB|G|Y|ĐẠT|CHƯA ĐẠT)$/.test(upper)) { subjectRating = upper; break; }
-                            }
+                            const str = String(cell).trim().replace(',', '.');
+                            const num = parseFloat(str);
+                            if (!isNaN(num) && num >= 0 && num <= 10) { subjectScore = num; break; }
+                            const upper = str.toUpperCase();
+                            if (/^(T|K|Đ|CĐ|TB|G|Y|ĐẠT|CHƯA ĐẠT)$/.test(upper)) { subjectRating = upper; break; }
                         }
                     } else {
-                        const ratingsFound = [];
+                        const ratings = [];
                         for (let j = nameEndIndex + 1; j < row.length; j++) {
-                            const cell = row[j];
-                            if (cell == null || String(cell).trim() === '') continue;
-                            const str = String(cell).trim().toUpperCase();
-                            if (/^(T|K|Đ|CĐ|G|TB|Y|TỐT|KHÁ|ĐẠT|CHƯA ĐẠT|GIỎI|YẾU|TRUNG BÌNH|KÉM)$/.test(str)) {
-                                ratingsFound.push(str);
-                            } else if (/^\d+$/.test(str)) {
-                                const n = parseInt(str, 10);
-                                if (n >= 0 && n < 60) absences = n;
-                            }
+                            const str = String(row[j] || '').trim().toUpperCase();
+                            if (/^(T|K|Đ|CĐ|G|TB|Y|TỐT|KHÁ|ĐẠT|CHƯA ĐẠT|GIỎI|YẾU|TRUNG BÌNH|KÉM)$/.test(str)) ratings.push(str);
+                            else if (/^\d+$/.test(str)) { const n = parseInt(str); if (n >= 0 && n < 60) absences = n; }
                         }
-                        if (ratingsFound.length >= 2) {
-                            academicResult = ratingsFound[0];
-                            conductRating = ratingsFound[1];
-                        } else if (ratingsFound.length === 1) {
-                            academicResult = ratingsFound[0];
-                        }
+                        if (ratings.length >= 1) academicResult = ratings[0];
+                        if (ratings.length >= 2) conductRating = ratings[1];
                     }
 
-                    const hasData = (role === TeacherRole.SUBJECT) 
-                        ? (subjectScore !== undefined || subjectRating !== undefined)
-                        : (academicResult !== undefined || conductRating !== undefined || absences !== undefined);
-
-                    if (!hasIndex && !hasData) return;
-
-                    students.push({
-                        id: `student-xls-${Date.now()}-${rowIndex}`,
-                        name: fullName,
-                        comment: '',
-                        isProcessing: false,
-                        subjectScore, subjectRating, academicResult, conductRating, absences
-                    });
+                    if ((role === TeacherRole.SUBJECT && (subjectScore !== undefined || subjectRating)) || (role === TeacherRole.HOMEROOM && (academicResult || conductRating || absences))) {
+                        students.push({
+                            id: `xls-${Date.now()}-${rowIndex}`,
+                            name: fullName,
+                            comment: '',
+                            isProcessing: false,
+                            subjectScore, subjectRating, academicResult, conductRating, absences
+                        });
+                    }
                 });
-
                 return { students, detectedSubject };
-            } catch (e) {
-                console.error("Excel Error:", e);
-                return { students: [] };
-            }
+            } catch (e) { console.error(e); return { students: [] }; }
         };
 
-        // 2. Xử lý AI (Gemini)
+        // --- LOGIC AI (GEMINI) ---
         const getStoredKey = () => localStorage.getItem('GEMINI_API_KEY') || "";
-        
-        const getAIClient = (key) => {
-            const apiKey = key || getStoredKey();
-            if (!apiKey) throw new Error("MISSING_API_KEY");
-            if (!window.GoogleGenAI) throw new Error("AI_LIB_NOT_LOADED");
-            return new window.GoogleGenAI({ apiKey });
-        };
+        const CANDIDATE_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"];
 
-        const CANDIDATE_MODELS = [
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite-preview-02-05", 
-            "gemini-1.5-flash", 
-            "gemini-flash-latest"
-        ];
+        const getAIClient = (key) => {
+            const k = key || getStoredKey();
+            if (!k) throw new Error("MISSING_API_KEY");
+            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong.");
+            return new window.GoogleGenAI({ apiKey: k });
+        };
 
         const testApiConnection = async (apiKey) => {
-            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong. Vui lòng tải lại trang.");
             const ai = new window.GoogleGenAI({ apiKey });
-            let lastError = null;
             for (const model of CANDIDATE_MODELS) {
                 try {
-                    await ai.models.generateContent({ model: model, contents: "Hello" });
+                    await ai.models.generateContent({ model, contents: "Hello" });
                     localStorage.setItem('GEMINI_ACTIVE_MODEL', model);
                     return true;
-                } catch (e) {
-                    lastError = e;
-                    if (e.message && (e.message.includes("400") || e.message.includes("KEY"))) throw e;
-                }
+                } catch (e) { if (!e.message.includes("429")) throw e; }
             }
-            throw lastError;
-        };
-
-        const extractDataFromMedia = async (base64Data, mimeType, role) => {
-            const ai = getAIClient();
-            const modelName = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
-            const prompt = role === TeacherRole.SUBJECT 
-                ? "Trích xuất danh sách học sinh từ bảng điểm này: Tên môn học, Họ tên, Điểm tổng kết (hoặc xếp loại). JSON format."
-                : "Trích xuất danh sách học sinh: Họ tên, KQHT, KQRL, Số ngày nghỉ. JSON format.";
-
-            const Type = window.GoogleGenAIType;
-            const responseSchema = {
-                type: Type.OBJECT,
-                properties: {
-                    subjectName: { type: Type.STRING, nullable: true },
-                    students: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                name: { type: Type.STRING },
-                                score: { type: Type.NUMBER, nullable: true },
-                                rating: { type: Type.STRING, nullable: true },
-                                kqht: { type: Type.STRING, nullable: true },
-                                kqrl: { type: Type.STRING, nullable: true },
-                                absences: { type: Type.NUMBER, nullable: true }
-                            },
-                            required: ["name"]
-                        }
-                    }
-                },
-                required: ["students"]
-            };
-
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
-                config: { responseMimeType: "application/json", responseSchema: responseSchema }
-            });
-
-            const rawData = JSON.parse(response.text);
-            const students = (rawData.students || []).map((item, idx) => ({
-                id: `img-${Date.now()}-${idx}`,
-                name: item.name,
-                subjectScore: item.score,
-                subjectRating: item.rating,
-                academicResult: item.kqht,
-                conductRating: item.kqrl,
-                absences: item.absences,
-                comment: '',
-                isProcessing: false
-            }));
-            
-            return { students, detectedSubject: rawData.subjectName };
+            throw new Error("Không thể kết nối API.");
         };
 
         const generateCommentsBatch = async (students, role, subjectName) => {
             const ai = getAIClient();
-            const modelName = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
+            const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
             const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
             
-            let systemInstruction = `Bạn là giáo viên. Viết nhận xét học bạ ngắn gọn (Tối đa ${wordLimit} từ).`;
+            let prompt = `Bạn là giáo viên. Viết nhận xét ngắn gọn (TỐI ĐA ${wordLimit} từ).`;
             if (role === TeacherRole.SUBJECT) {
-                systemInstruction += ` Môn ${subjectName}. Quy tắc: Giỏi/Tốt: Khen năng lực. Khá: Khen cố gắng. TB: Nhắc chăm chỉ. Yếu: Nhắc ôn tập.`;
+                prompt += ` Môn ${subjectName}. Giỏi/Tốt: Khen năng lực. Khá: Khen cố gắng. TB: Nhắc chăm chỉ. Yếu: Nhắc ôn tập.`;
             } else {
-                systemInstruction += ` Vai trò GVCN. Quy tắc: Tốt: Khen ngoan. Khá: Khen phấn đấu. Cần cố gắng: Nhắc nhở. Chuyên cần: Nhắc nếu nghỉ nhiều.`;
+                prompt += ` GVCN. Tốt: Khen ngoan. Khá: Khen phấn đấu. Cần cố gắng: Nhắc nhở. Chuyên cần: Nhắc nếu nghỉ nhiều.`;
             }
 
             const Type = window.GoogleGenAIType;
-            const outputSchema = {
+            const schema = {
                 type: Type.ARRAY,
                 items: {
                     type: Type.OBJECT,
@@ -346,13 +224,13 @@
                 : { id: s.id, name: s.name, kqht: s.academicResult, kqrl: s.conductRating, absences: s.absences }
             );
 
-            const response = await ai.models.generateContent({
-                model: modelName,
+            const result = await ai.models.generateContent({
+                model,
                 contents: JSON.stringify(payload),
                 config: {
-                    systemInstruction: systemInstruction,
+                    systemInstruction: prompt,
                     responseMimeType: "application/json",
-                    responseSchema: outputSchema,
+                    responseSchema: schema,
                     safetySettings: [
                         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
                         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -362,52 +240,55 @@
                 }
             });
 
-            const results = JSON.parse(response.text);
+            const data = JSON.parse(result.text);
             const map = new Map();
-            if (Array.isArray(results)) results.forEach(r => map.set(r.id, r.comment));
+            if (Array.isArray(data)) data.forEach(item => map.set(item.id, item.comment));
             return map;
         };
 
-        // --- COMPONENTS ---
+        // --- COMPONENTS GIAO DIỆN ---
 
-        // 1. API Key Modal
+        // 1. Modal Nhập Key
         const ApiKeyModal = ({ onSave, onClear, hasKey }) => {
             const [key, setKey] = useState("");
+            const [status, setStatus] = useState("");
             const [loading, setLoading] = useState(false);
-            const [msg, setMsg] = useState("");
 
             const check = async () => {
-                if (!key.trim()) return;
-                setLoading(true); setMsg("");
+                if (!key) return;
+                setLoading(true); setStatus("");
                 try {
                     await testApiConnection(key.trim());
                     onSave(key.trim());
-                } catch (e) {
-                    setMsg("Key không hợp lệ hoặc lỗi mạng.");
-                } finally { setLoading(false); }
+                } catch (e) { setStatus("Key không hợp lệ hoặc lỗi mạng."); }
+                setLoading(false);
             };
 
             return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white p-6 rounded-lg max-w-md w-full shadow-xl">
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full animate-fade-in">
                         <h2 className="text-xl font-bold mb-4">Cài đặt API Key</h2>
-                        <p className="text-sm mb-2">Lấy key miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline">Google AI Studio</a>.</p>
-                        <input type="password" value={key} onChange={e => setKey(e.target.value)} className="w-full border p-2 rounded mb-2" placeholder="AIza..." />
-                        {msg && <p className="text-red-500 text-sm mb-2">{msg}</p>}
-                        <button onClick={check} disabled={loading} className="w-full bg-blue-600 text-white p-2 rounded font-bold">{loading ? "Đang kiểm tra..." : "Lưu Key"}</button>
+                        <div className="text-sm bg-blue-50 text-blue-800 p-3 rounded mb-4">
+                            Lấy Key miễn phí tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="font-bold underline">Google AI Studio</a>
+                        </div>
+                        <input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder="Dán Key vào đây (AIza...)" className="w-full border p-3 rounded mb-2 font-mono" />
+                        {status && <p className="text-red-500 text-sm mb-2">{status}</p>}
+                        <button onClick={check} disabled={loading} className="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700">
+                            {loading ? "Đang kiểm tra..." : "Lưu & Bắt đầu"}
+                        </button>
                         {hasKey && <button onClick={onClear} className="w-full mt-2 text-red-500 text-sm">Xóa Key cũ</button>}
                     </div>
                 </div>
             );
         };
 
-        // 2. Student List
-        const StudentList = ({ students, role, subjectName, onUpdate, onGenAll, onGenOne, onChangeSubject, onDelete, isGen }) => {
-            const tableRef = useRef(null);
-            
+        // 2. Danh sách Học sinh
+        const StudentList = ({ students, role, subjectName, onUpdate, onGenOne, onGenAll, onDelete, onChangeSubject, isGen }) => {
+            const tableRef = useRef();
+
             const exportExcel = () => {
                 const ws = XLSX.utils.json_to_sheet(students.map((s, i) => ({
-                    STT: i + 1, 'Họ tên': s.name, 
+                    STT: i + 1, 'Họ tên': s.name,
                     'Kết quả': role === TeacherRole.SUBJECT ? (s.subjectScore ?? s.subjectRating) : `${s.academicResult} - ${s.conductRating}`,
                     'Nhận xét': s.comment
                 })));
@@ -426,50 +307,47 @@
             };
 
             return (
-                <div className="bg-white rounded shadow border flex flex-col h-full overflow-hidden animate-fade-in">
-                    <div className="p-4 border-b bg-slate-50 flex justify-between items-center flex-wrap gap-2">
-                        <div className="flex gap-2 items-center">
-                            <span className="font-bold">{students.length} HS</span>
-                            {role === TeacherRole.SUBJECT && <select value={subjectName} onChange={e => onChangeSubject(e.target.value)} className="border rounded p-1"><option>Toán</option><option>Văn</option><option>KHTN</option><option>LS & ĐL</option><option>Tin học</option><option>Ng.ngữ</option><option>GDCD</option><option>C.nghệ</option><option>GDTC</option><option>Nghệ thuật</option><option>Khác</option></select>}
+                <div className="bg-white rounded-xl shadow border flex flex-col h-full overflow-hidden">
+                    <div className="p-4 border-b bg-slate-50 flex flex-wrap gap-4 justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <span className="bg-white border px-2 py-1 rounded font-bold shadow-sm">{students.length} HS</span>
+                            {role === TeacherRole.SUBJECT && <select value={subjectName} onChange={e => onChangeSubject(e.target.value)} className="border rounded p-1 font-semibold"><option>Toán</option><option>Văn</option><option>KHTN</option><option>LS & ĐL</option><option>Tin học</option><option>Ng.ngữ</option><option>GDCD</option><option>C.nghệ</option><option>GDTC</option><option>Nghệ thuật</option><option>Khác</option></select>}
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={onGenAll} disabled={isGen} className="bg-blue-600 text-white px-3 py-1 rounded font-bold disabled:opacity-50">{isGen ? "Đang tạo..." : "Tạo lại hết"}</button>
-                            <button onClick={exportExcel} className="border bg-white text-green-600 px-3 py-1 rounded font-bold">Excel</button>
-                            <button onClick={exportPDF} className="border bg-white text-red-600 px-3 py-1 rounded font-bold">PDF</button>
+                            <button onClick={onGenAll} disabled={isGen} className="bg-blue-600 text-white px-3 py-1.5 rounded font-bold disabled:opacity-50">{isGen ? "Đang tạo..." : "Tạo lại hết"}</button>
+                            <button onClick={exportExcel} className="bg-white border text-green-700 px-3 py-1.5 rounded font-bold">Excel</button>
+                            <button onClick={exportPDF} className="bg-white border text-red-600 px-3 py-1.5 rounded font-bold">PDF</button>
                         </div>
                     </div>
-                    <div className="overflow-auto p-4 flex-1" ref={tableRef}>
+                    <div className="overflow-auto flex-1 p-4" ref={tableRef}>
                         <table className="w-full text-left border-collapse border">
                             <thead className="bg-slate-100 text-xs font-bold uppercase sticky top-0">
                                 <tr>
-                                    <th className="p-2 border w-10">STT</th>
-                                    <th className="p-2 border w-48">Họ tên</th>
-                                    <th className="p-2 border w-24">Kết quả</th>
-                                    <th className="p-2 border">Nhận xét</th>
-                                    <th className="p-2 border w-20 text-center" data-html2canvas-ignore>Tác vụ</th>
+                                    <th className="p-3 border w-12 text-center">STT</th>
+                                    <th className="p-3 border w-48">Họ và Tên</th>
+                                    <th className="p-3 border w-24">Kết quả</th>
+                                    <th className="p-3 border">Nội dung nhận xét</th>
+                                    <th className="p-3 border w-24 text-center" data-html2canvas-ignore>Tác vụ</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {students.map((s, i) => (
                                     <tr key={s.id} className="hover:bg-blue-50">
-                                        <td className="p-2 border text-center">{i + 1}</td>
-                                        <td className="p-2 border font-semibold">{s.name}</td>
-                                        <td className="p-2 border text-sm">
-                                            {role === TeacherRole.SUBJECT ? (s.subjectScore ?? s.subjectRating) : (
-                                                <div className="text-xs">
-                                                    <div>HT: {s.academicResult}</div>
-                                                    <div>RL: {s.conductRating}</div>
-                                                    {s.absences > 0 && <div className="text-red-500">Nghỉ: {s.absences}</div>}
-                                                </div>
-                                            )}
+                                        <td className="p-3 border text-center text-slate-500">{i + 1}</td>
+                                        <td className="p-3 border font-semibold">{s.name}</td>
+                                        <td className="p-3 border text-sm">
+                                            {role === TeacherRole.SUBJECT ? <span className={`font-bold ${s.subjectScore >= 8 || s.subjectRating === 'T' ? 'text-green-600' : s.subjectScore < 5 ? 'text-red-500' : ''}`}>{s.subjectScore ?? s.subjectRating}</span> 
+                                            : <div><div className="font-bold">{s.academicResult}</div><div className="text-slate-500">{s.conductRating}</div></div>}
                                         </td>
                                         <td className="p-2 border">
-                                            {s.isProcessing ? <div className="h-8 bg-slate-200 animate-pulse rounded"></div> : 
-                                            <textarea className="w-full h-full bg-transparent resize-none outline-none" rows={2} value={s.comment} onChange={e => onUpdate(s.id, {comment: e.target.value})} placeholder="..."></textarea>}
+                                            {s.isProcessing ? <div className="h-10 bg-slate-200 animate-pulse rounded"></div> : 
+                                            <textarea className="w-full bg-transparent outline-none resize-none" rows={2} value={s.comment} onChange={e => onUpdate(s.id, {comment: e.target.value})} placeholder="..."></textarea>}
                                         </td>
                                         <td className="p-2 border text-center" data-html2canvas-ignore>
-                                            <button onClick={() => onGenOne(s)} className="text-blue-600 p-1" title="Tạo lại">↺</button>
-                                            <button onClick={() => onDelete(s.id)} className="text-red-500 p-1" title="Xóa">✕</button>
+                                            <div className="flex justify-center gap-2">
+                                                <button onClick={() => onGenOne(s)} className="text-blue-600 hover:bg-blue-100 p-1.5 rounded" title="Viết lại">↺</button>
+                                                <button onClick={() => onDelete(s.id)} className="text-red-500 hover:bg-red-100 p-1.5 rounded" title="Xóa">✕</button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -480,109 +358,91 @@
             );
         };
 
-        // 3. MAIN APP
+        // 3. Ứng dụng chính (App)
         function App() {
             const [role, setRole] = useState(TeacherRole.SUBJECT);
             const [students, setStudents] = useState([]);
             const [subject, setSubject] = useState('Toán');
             const [isGen, setIsGen] = useState(false);
-            const [isRead, setIsRead] = useState(false);
-            const [error, setError] = useState(null);
             const [status, setStatus] = useState("");
             const [showKey, setShowKey] = useState(false);
+            const [error, setError] = useState("");
 
             useEffect(() => { if (!getStoredKey()) setShowKey(true); }, []);
 
-            const updateStudent = (id, data) => setStudents(prev => prev.map(s => s.id === id ? {...s, ...data} : s));
+            const updateStudent = (id, d) => setStudents(prev => prev.map(s => s.id === id ? {...s, ...d} : s));
             const deleteStudent = (id) => setStudents(prev => prev.filter(s => s.id !== id));
 
             const runAI = async (targets, sub) => {
-                if (targets.length === 0) return;
-                setIsGen(true); setError(null); setStatus("Bắt đầu...");
+                if (!targets.length) return;
+                setIsGen(true); setError(""); setStatus("Đang xử lý...");
                 setStudents(prev => prev.map(s => targets.find(t => t.id === s.id) ? {...s, isProcessing: true} : s));
 
                 try {
                     const chunkSize = 5;
                     for (let i = 0; i < targets.length; i += chunkSize) {
                         const chunk = targets.slice(i, i + chunkSize);
-                        setStatus(`Đang xử lý ${i+1}-${Math.min(i+chunkSize, targets.length)}...`);
-                        
+                        setStatus(`Đang viết nhận xét nhóm ${i/chunkSize + 1}...`);
                         const map = await generateCommentsBatch(chunk, role, sub);
                         setStudents(prev => prev.map(s => map.has(s.id) ? {...s, comment: map.get(s.id), isProcessing: false} : (chunk.find(c => c.id === s.id) ? {...s, isProcessing: false} : s)));
-
                         if (i + chunkSize < targets.length) {
-                            for (let t = 4; t > 0; t--) { setStatus(`Nghỉ ${t}s (tránh lỗi Google)...`); await new Promise(r => setTimeout(r, 1000)); }
+                            for (let t = 4; t > 0; t--) { setStatus(`Nghỉ ${t}s để tránh nghẽn mạng...`); await new Promise(r => setTimeout(r, 1000)); }
                         }
                     }
                     setStatus("");
                 } catch (e) {
-                    setError(e.message === "MISSING_API_KEY" ? "Thiếu API Key" : e.message);
+                    setError(e.message === "MISSING_API_KEY" ? "Thiếu Key" : e.message);
                     if (e.message === "MISSING_API_KEY") setShowKey(true);
                     setStudents(prev => prev.map(s => ({...s, isProcessing: false})));
                 } finally { setIsGen(false); }
             };
 
             const handleFile = async (file) => {
-                setError(null); setStudents([]);
+                setError(""); setStudents([]);
                 if (file.name.match(/\.xls|xlsx/)) {
-                    const data = await file.arrayBuffer();
-                    const res = parseExcelData(data, role);
+                    const buf = await file.arrayBuffer();
+                    const res = parseExcelData(buf, role);
                     if (res.students.length) {
                         setStudents(res.students);
                         if (res.detectedSubject) setSubject(res.detectedSubject);
                         runAI(res.students, res.detectedSubject || subject);
-                    } else setError("Không đọc được dữ liệu Excel.");
-                } else if (file.type.match(/image|pdf/)) {
-                    setIsRead(true);
-                    const reader = new FileReader();
-                    reader.onloadend = async () => {
-                        try {
-                            const res = await extractDataFromMedia(reader.result.split(',')[1], file.type, role);
-                            setStudents(res.students);
-                            if (res.detectedSubject) setSubject(res.detectedSubject);
-                            runAI(res.students, res.detectedSubject || subject);
-                        } catch (e) { setError(e.message); }
-                        setIsRead(false);
-                    };
-                    reader.readAsDataURL(file);
-                }
+                    } else setError("Không đọc được dữ liệu.");
+                } else setError("Vui lòng chọn file Excel (.xlsx)");
             };
 
             return (
                 <div className="min-h-screen flex flex-col font-sans">
-                    <header className="bg-white border-b h-14 flex items-center justify-between px-4 sticky top-0 z-20 shadow-sm">
-                        <div className="flex items-center gap-2 font-bold text-lg text-slate-800">
-                            <div className="bg-blue-600 text-white w-8 h-8 rounded flex items-center justify-center">AI</div>
-                            Trợ lý Nhận xét
+                    <header className="bg-white h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-xl shadow-lg">AI</div>
+                            <h1 className="text-xl font-bold text-slate-800 hidden sm:block">Trợ lý Nhận xét</h1>
                         </div>
-                        <div className="flex gap-2">
-                            <div className="bg-slate-100 rounded p-1 flex">
-                                <button onClick={() => {setRole(TeacherRole.SUBJECT); setStudents([]);}} className={`px-3 py-1 rounded text-sm font-bold ${role === TeacherRole.SUBJECT ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>GVBM</button>
-                                <button onClick={() => {setRole(TeacherRole.HOMEROOM); setStudents([]);}} className={`px-3 py-1 rounded text-sm font-bold ${role === TeacherRole.HOMEROOM ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>GVCN</button>
+                        <div className="flex gap-4">
+                            <div className="bg-slate-100 p-1 rounded-lg flex">
+                                <button onClick={() => { setRole(TeacherRole.SUBJECT); setStudents([]); }} className={`px-4 py-1.5 rounded-md font-bold text-sm ${role === TeacherRole.SUBJECT ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>GVBM</button>
+                                <button onClick={() => { setRole(TeacherRole.HOMEROOM); setStudents([]); }} className={`px-4 py-1.5 rounded-md font-bold text-sm ${role === TeacherRole.HOMEROOM ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>GVCN</button>
                             </div>
-                            <button onClick={() => setShowKey(true)} className="text-slate-400 hover:text-yellow-600">🔑</button>
+                            <button onClick={() => setShowKey(true)} className="text-slate-400 hover:text-yellow-600 text-xl" title="Key">🔑</button>
                         </div>
                     </header>
 
-                    <main className="flex-1 max-w-7xl w-full mx-auto p-4 flex flex-col gap-4">
-                        {status && <div className="bg-blue-50 text-blue-700 p-2 rounded flex items-center gap-2 text-sm font-bold border border-blue-200"><span className="animate-spin">⏳</span> {status}</div>}
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
+                        {status && <div className="bg-blue-50 text-blue-700 p-3 rounded-lg flex items-center gap-3 border border-blue-200 animate-fade-in"><span className="animate-spin text-xl">⏳</span> <span className="font-bold">{status}</span></div>}
                         
-                        {students.length === 0 ? (
-                            <div className="bg-white rounded-xl shadow p-8 text-center border-2 border-dashed border-slate-300 hover:border-blue-400 transition-colors cursor-pointer relative">
-                                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFile(e.target.files[0])} disabled={isRead} />
-                                {isRead ? <div className="font-bold text-blue-600 animate-pulse">Đang đọc dữ liệu từ ảnh...</div> : 
-                                <div>
-                                    <div className="text-4xl mb-2">📂</div>
-                                    <div className="font-bold text-slate-700">Chọn file Excel hoặc Ảnh bảng điểm</div>
-                                </div>}
-                                {error && <div className="mt-4 text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+                        {!students.length ? (
+                            <div className="bg-white rounded-2xl shadow-xl p-10 text-center border-2 border-dashed border-slate-300 hover:border-blue-500 transition-colors cursor-pointer relative group animate-fade-in">
+                                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFile(e.target.files[0])} accept=".xlsx,.xls" />
+                                <div className="text-6xl mb-4 group-hover:scale-110 transition-transform">📂</div>
+                                <h3 className="text-xl font-bold text-slate-700 mb-2">Chọn file Excel bảng điểm</h3>
+                                <p className="text-slate-500">Hệ thống sẽ tự động đọc và viết nhận xét</p>
+                                {error && <div className="mt-4 text-red-600 font-bold bg-red-50 p-2 rounded">{error}</div>}
                             </div>
                         ) : (
-                            <StudentList students={students} role={role} subjectName={subject} onUpdate={updateStudent} onGenOne={s => runAI([s], subject)} onGenAll={() => runAI(students, subject)} onChangeSubject={setSubject} onDelete={deleteStudent} isGen={isGen} />
+                            <StudentList students={students} role={role} subjectName={subject} onUpdate={updateStudent} onGenOne={s => runAI([s], subject)} onGenAll={() => runAI(students, subject)} onDelete={deleteStudent} onChangeSubject={setSubject} isGen={isGen} />
                         )}
                     </main>
 
-                    {showKey && <ApiKeyModal onSave={k => {localStorage.setItem('GEMINI_API_KEY', k); setShowKey(false);}} onClear={() => {localStorage.removeItem('GEMINI_API_KEY'); setShowKey(true);}} hasKey={!!getStoredKey()} />}
+                    {showKey && <ApiKeyModal onSave={k => { localStorage.setItem('GEMINI_API_KEY', k); setShowKey(false); }} onClear={() => { localStorage.removeItem('GEMINI_API_KEY'); setShowKey(true); }} hasKey={!!getStoredKey()} />}
                 </div>
             );
         }
