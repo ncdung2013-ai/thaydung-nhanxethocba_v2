@@ -40,9 +40,16 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 
-    <!-- 3. CẤU HÌNH AI (Phiên bản mới nhất) -->
+    <!-- 3. CẤU HÌNH AI (Fix lỗi Constructor) -->
+    <script>
+        // Polyfill cho môi trường Browser để thư viện AI hoạt động
+        window.process = { env: { NODE_ENV: 'production' } };
+    </script>
     <script type="module">
-        import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.1.1";
+        // Dùng esm.sh với ?bundle để đảm bảo load đúng Class
+        import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.1.2";
+        
+        // Gán vào window để code React bên dưới dùng được
         window.GoogleGenAI = GoogleGenAI;
         window.GoogleGenAIType = Type;
     </script>
@@ -183,12 +190,16 @@
         // --- CẤU HÌNH AI THÔNG MINH ---
         const getAIClient = (key) => {
             if (!key) throw new Error("MISSING_API_KEY");
-            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong.");
+            
+            // KIỂM TRA KỸ HƠN ĐỂ BÁO LỖI RÕ RÀNG
+            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong. Vui lòng tải lại trang (F5).");
+            if (typeof window.GoogleGenAI !== 'function') throw new Error("Lỗi thư viện AI (Not a constructor).");
+
             return new window.GoogleGenAI({ apiKey: key });
         };
 
         const testApiConnection = async (apiKey) => {
-            const ai = new window.GoogleGenAI({ apiKey });
+            const ai = getAIClient(apiKey); // Sử dụng hàm wrapper để check lỗi constructor
             let lastError = null;
 
             // Thử lần lượt các model để tìm cái nào Key này dùng được
@@ -203,7 +214,6 @@
                     return true;
                 } catch (e) {
                     lastError = e;
-                    // Nếu lỗi do Key sai hoặc bị chặn (400, 403), dừng ngay không thử model khác
                     const msg = e.message || "";
                     if (msg.includes("400") || msg.includes("INVALID_ARGUMENT") || msg.includes("API_KEY_INVALID") || msg.includes("403")) {
                         throw e;
