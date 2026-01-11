@@ -1,284 +1,326 @@
 <!DOCTYPE html>
 <html lang="vi">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trợ lý Nhận xét Học bạ (All-in-One)</title>
     
-    <!-- 1. THƯ VIỆN NGOÀI (CDN) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
+    
+    <!-- Cấu hình Tailwind -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'sans-serif'] },
+            colors: { primary: '#0F52BA', secondary: '#E1E8F0' },
+            animation: { 
+                'spin-slow': 'spin 3s linear infinite',
+                'fade-in': 'fadeIn 0.3s ease-out',
+                'fade-in-up': 'fadeInUp 0.5s ease-out'
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                },
+                fadeInUp: {
+                    '0%': { opacity: '0', transform: 'translateY(20px)' },
+                    '100%': { opacity: '1', transform: 'translateY(0)' },
+                }
+            }
+          }
+        }
+      }
+    </script>
+    
     <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .cursor-wait { cursor: wait; }
-        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
-        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        body { background-color: #f8fafc; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        .loading-overlay { position: fixed; inset: 0; background: white; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .cursor-wait { cursor: wait; }
     </style>
 
-    <!-- 2. CẤU HÌNH AI (Load Module và gán vào Window) -->
-    <script>
-        window.process = { env: { NODE_ENV: 'production' } }; // Fake process for libs
-    </script>
-    <script type="module">
-        import { GoogleGenAI, Type, Schema, HarmCategory, HarmBlockThreshold } from "https://esm.sh/@google/genai@0.2.1";
-        
-        // Gán thư viện vào biến toàn cục để Babel script dùng được
-        window.GenAI_Libs = {
-            GoogleGenAI,
-            Type,
-            Schema,
-            HarmCategory,
-            HarmBlockThreshold
-        };
-        
-        // Báo hiệu đã tải xong
-        window.isGenAILoaded = true;
-    </script>
-<script type="importmap">
+    <!-- Import Map: Định nghĩa nơi tải các thư viện -->
+
+
+    <!-- Babel Standalone: Để trình duyệt hiểu được code React (JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+    <div id="root"></div>
+
+    <!-- MAIN SCRIPT: CHỨA TOÀN BỘ LOGIC -->
+    <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "html2canvas": "https://esm.sh/html2canvas@1.4.1",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5",
-    "html2canvas": "https://esm.sh/html2canvas@^1.4.1",
-    "jspdf": "https://esm.sh/jspdf@^4.0.0",
     "path": "https://esm.sh/path@^0.12.7",
     "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
-</head>
-<body>
-    <div id="root">
-        <div class="loading-overlay">
-            <div class="spinner"></div>
-            <p class="mt-4 text-slate-600 font-semibold">Đang khởi động ứng dụng...</p>
-        </div>
-    </div>
+    <script type="text/babel" data-type="module" data-presets="typescript,react">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import { GoogleGenAI, Type } from '@google/genai';
+        import * as XLSX from 'xlsx';
+        import html2canvas from 'html2canvas';
+        import { jsPDF } from 'jspdf';
 
-    <!-- 3. MÃ NGUỒN ỨNG DỤNG (Gộp tất cả Component/Logic vào đây) -->
-    <script type="text/babel">
-        const { useState, useEffect, useRef, useCallback } = React;
-        const XLSX = window.XLSX;
-        const html2canvas = window.html2canvas;
-        const { jsPDF } = window.jspdf;
+        // --- 1. TYPES & ENUMS ---
+        enum TeacherRole {
+            SUBJECT = 'GVBM',
+            HOMEROOM = 'GVCN',
+        }
 
-        // --- CONSTANTS ---
-        const TeacherRole = { SUBJECT: 'GVBM', HOMEROOM: 'GVCN' };
-        const SUBJECTS = ["Toán", "Văn", "LS & ĐL", "KHTN", "Tin học", "Ng.ngữ", "GDCD", "C.nghệ", "GDTC", "Nghệ thuật", "NDGDCĐP", "HĐTN&HN", "Khác ..."];
-        const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+        // --- 2. SERVICES ---
 
-        // --- LOGIC EXCEL & PARSING (Từ excelService.ts) ---
+        // --- EXCEL SERVICE ---
         const isNamePart = (val) => {
             if (typeof val !== 'string') return false;
             const str = val.trim();
-            if (str.length === 0 || /\d/.test(str)) return false; 
+            if (str.length === 0) return false;
+            if (/\d/.test(str)) return false; 
             if (str.length < 2 && str.toUpperCase() !== 'Ý') return false;
-            const keywords = ['stt', 'họ', 'tên', 'thứ', 'ngày', 'tháng', 'năm', 'lớp', 'trường', 'điểm', 'kết', 'quả', 'học', 'kỳ', 'môn', 'giáo', 'viên', 'tbm', 'đtb', 'ubnd', 'thcs', 'thpt', 'phòng', 'sở', 'đào', 'tạo', 'cộng', 'hòa', 'xã', 'huyện', 'tỉnh', 'thành', 'phố', 'độc', 'lập', 'số', 'lượng', 'tỉ', 'lệ', 'tổng', 'sinh', 'đạt', 'chưa', 'thống', 'kê'];
+            const keywords = [
+                'stt', 'họ', 'tên', 'thứ', 'ngày', 'tháng', 'năm', 'lớp', 'trường', 
+                'dân', 'tộc', 'nữ', 'nam', 'điểm', 'trung', 'bình', 'xếp', 'loại',
+                'ghi', 'chú', 'kết', 'quả', 'học', 'kỳ', 'môn', 
+                'gdcd', 'công', 'nghệ', 'tin', 'thể',
+                'giáo', 'viên', 'người', 'lập', 'biểu', 'thống', 'kê',
+                'tbm', 'đtb', 'hk1', 'hk2', 'cn', 'tốt', 'khá',
+                'ubnd', 'thcs', 'thpt', 'tiểu', 'phòng', 'sở', 'đào', 'tạo', 'cộng', 'hòa',
+                'xã', 'huyện', 'tỉnh', 'thành', 'phố', 'độc', 'lập', 'tự', 'do',
+                'đđg', 'tx', 'đgtx', 'đđgc', 'nhận', 'xét', 'khối',
+                'số', 'lượng', 'tỉ', 'lệ', 'tỷ', 'phần', 'trăm', 'tổng',
+                'sinh', 'đạt', 'chưa' 
+            ];
             const lower = str.toLowerCase();
-            if (keywords.some(k => lower === k)) return false;
+            if (['stt', 'đđgtx', 'đđgck', 'đtbmhk'].some(k => lower === k)) return false;
+            if (lower.includes('số lượng') || lower.includes('tỉ lệ') || lower.includes('tỷ lệ') || lower.includes('thống kê')) return false;
+            if (lower.includes('số học sinh') || lower === 'đạt' || lower === 'chưa đạt') return false;
+            if (keywords.some(k => lower === k)) return false; 
             if (['trường', 'phòng', 'ủy', 'ban', 'cộng hòa'].some(k => lower.includes(k))) return false;
             if (/^(T|K|TB|Y|G|Đ|CĐ|TX\d|HK\d)$/.test(str.toUpperCase())) return false;
             return true;
         };
 
         const detectSubject = (headers) => {
-            const flat = headers.flat().join(' ').toLowerCase();
-            if (flat.includes('toán')) return 'Toán';
-            if (flat.includes('văn') || flat.includes('việt') || flat.includes('ngữ')) return 'Văn';
-            if (flat.includes('ls') || flat.includes('lịch sử') || flat.includes('địa')) return 'LS & ĐL';
-            if (flat.includes('khtn') || flat.includes('lý') || flat.includes('hóa') || flat.includes('sinh')) return 'KHTN';
-            if (flat.includes('tin')) return 'Tin học';
-            if (flat.includes('anh') || flat.includes('ngoại ngữ')) return 'Ng.ngữ';
-            if (flat.includes('gdcd') || flat.includes('công dân')) return 'GDCD';
-            if (flat.includes('công nghệ')) return 'C.nghệ';
-            if (flat.includes('thể') || flat.includes('gdtc')) return 'GDTC';
-            if (flat.includes('nhạc') || flat.includes('mỹ') || flat.includes('nghệ')) return 'Nghệ thuật';
+            const flatHeaders = headers.flat().join(' ').toLowerCase();
+            if (flatHeaders.includes('toán')) return 'Toán';
+            if (flatHeaders.includes('văn') || flatHeaders.includes('việt') || flatHeaders.includes('ngữ')) return 'Văn';
+            if (flatHeaders.includes('lịch sử') || flatHeaders.includes('địa lý') || flatHeaders.includes('sử') || flatHeaders.includes('địa')) return 'LS & ĐL';
+            if (flatHeaders.includes('khoa học tự nhiên') || flatHeaders.includes('khtn') || flatHeaders.includes('lý') || flatHeaders.includes('hóa') || flatHeaders.includes('sinh') || flatHeaders.includes('vật')) return 'KHTN';
+            if (flatHeaders.includes('tin')) return 'Tin học';
+            if (flatHeaders.includes('anh') || flatHeaders.includes('ngoại ngữ')) return 'Ng.ngữ';
+            if (flatHeaders.includes('gdcd') || flatHeaders.includes('công dân')) return 'GDCD';
+            if (flatHeaders.includes('công nghệ')) return 'C.nghệ';
+            if (flatHeaders.includes('thể') || flatHeaders.includes('gdtc')) return 'GDTC';
+            if (flatHeaders.includes('nhạc') || flatHeaders.includes('mỹ thuật') || flatHeaders.includes('nghệ thuật')) return 'Nghệ thuật';
+            if (flatHeaders.includes('địa phương') || flatHeaders.includes('ndgdcđp')) return 'NDGDCĐP';
+            if (flatHeaders.includes('trải nghiệm') || flatHeaders.includes('hướng nghiệp') || flatHeaders.includes('hđtn')) return 'HĐTN&HN';
             return undefined;
         };
 
         const parseExcelData = (fileData, role) => {
             try {
-                let workbook = (typeof fileData === 'string') ? XLSX.read(fileData, { type: 'string' }) : XLSX.read(fileData, { type: 'array' });
-                if (!workbook.SheetNames.length) return { students: [] };
-                const ws = workbook.Sheets[workbook.SheetNames[0]];
-                const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                if (!rawData.length) return { students: [] };
+                let workbook = (typeof fileData === 'string') 
+                ? XLSX.read(fileData, { type: 'string' }) 
+                : XLSX.read(fileData, { type: 'array' });
 
-                const detectedSubject = detectSubject(rawData.slice(0, 5));
+                if (!workbook.SheetNames || workbook.SheetNames.length === 0) return { students: [] };
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                if (!worksheet) return { students: [] };
+                
+                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                if (!rawData || rawData.length === 0) return { students: [] };
+
+                const headerRows = rawData.slice(0, 5);
+                const detectedSubject = detectSubject(headerRows);
                 const students = [];
 
                 rawData.forEach((row, rowIndex) => {
                     if (!Array.isArray(row) || row.length === 0) return;
-                    let nameParts = [], nameEndIndex = -1;
+                    let hasIndex = false;
                     const firstCell = row[0];
-                    let hasIndex = typeof firstCell === 'number' || (typeof firstCell === 'string' && /^\d+$/.test(firstCell.trim()));
+                    if (typeof firstCell === 'number' || (typeof firstCell === 'string' && /^\d+$/.test(firstCell.trim()))) {
+                        const val = Number(firstCell);
+                        if (val > 0 && val < 1000) hasIndex = true;
+                    }
+
+                    let nameParts = [];
+                    let nameEndIndex = -1; 
 
                     for (let i = 0; i < row.length; i++) {
                         const cell = row[i];
-                        if (nameParts.length === 0 && hasIndex && i === 0) continue;
-                        if (isNamePart(cell)) { nameParts.push(String(cell).trim()); nameEndIndex = i; }
-                        else if (nameParts.length > 0 && (!cell || String(cell).trim() === '')) { 
-                            if (!isNamePart(row[i+1])) break; 
-                        } else if (nameParts.length > 0) break;
+                        if (nameParts.length === 0 && (typeof cell === 'number' || (typeof cell === 'string' && /^\d+$/.test(cell.trim())))) continue;
+                        if (nameParts.length === 0) {
+                            if (isNamePart(cell)) {
+                                nameParts.push(String(cell).trim());
+                                nameEndIndex = i;
+                            }
+                        } else {
+                            if (isNamePart(cell)) {
+                                nameParts.push(String(cell).trim());
+                                nameEndIndex = i;
+                            } else if (cell === undefined || cell === null || String(cell).trim() === '') {
+                                const nextCell = row[i+1];
+                                if (isNamePart(nextCell)) continue; else break; 
+                            } else {
+                                break;
+                            }
+                        }
                     }
 
                     const fullName = nameParts.join(' ').trim();
                     if (!fullName || fullName.length < 2) if (fullName !== 'Ý') return;
-                    if (fullName.toUpperCase().includes("TRƯỜNG") || fullName.toUpperCase().includes("THCS")) return;
 
-                    let subjectScore, subjectRating, academicResult, conductRating, absences;
+                    const upperName = fullName.toUpperCase();
+                    if (upperName.includes("TRƯỜNG") || upperName.includes("THCS") || upperName.includes("UBND") || upperName.includes("CỘNG HÒA")) return;
+                    if (upperName.includes("SỐ LƯỢNG") || upperName.includes("TỈ LỆ") || upperName.includes("TỔNG CỘNG") || upperName.startsWith("SỐ HỌC SINH")) return;
+                    if (fullName.includes("%") || (fullName.includes("-") && fullName.length > 5 && !fullName.includes(" "))) return;
                     
+                    let subjectScore, subjectRating, academicResult, conductRating, absences;
+
                     if (role === TeacherRole.SUBJECT) {
                         for (let j = row.length - 1; j > nameEndIndex; j--) {
                             const cell = row[j];
-                            if (cell == null || String(cell).trim() === '') continue;
-                            const str = String(cell).trim().replace(',', '.');
-                            const num = parseFloat(str);
-                            if (!isNaN(num) && num >= 0 && num <= 10) { subjectScore = num; break; }
-                            const upper = str.toUpperCase();
-                            if (/^(T|K|Đ|CĐ|TB|G|Y|ĐẠT|CHƯA ĐẠT)$/.test(upper)) { subjectRating = upper; break; }
+                            if (cell === undefined || cell === null || String(cell).trim() === '') continue;
+                            const cellStr = String(cell).trim().replace(',', '.');
+                            const cellNum = parseFloat(cellStr);
+                            if (!isNaN(cellNum)) {
+                                if (cellNum >= 0 && cellNum <= 10) { subjectScore = cellNum; break; }
+                            } else {
+                                const upper = cellStr.toUpperCase();
+                                if (/^(T|K|Đ|CĐ|TB|G|Y|ĐẠT|CHƯA ĐẠT)$/.test(upper)) { subjectRating = upper; break; }
+                            }
                         }
                     } else {
-                        const ratings = [];
+                        const ratingsFound = [];
                         for (let j = nameEndIndex + 1; j < row.length; j++) {
-                            const str = String(row[j] || '').trim().toUpperCase();
-                            if (/^(T|K|Đ|CĐ|G|TB|Y|TỐT|KHÁ|ĐẠT|CHƯA ĐẠT|GIỎI|YẾU|TRUNG BÌNH|KÉM)$/.test(str)) ratings.push(str);
-                            else if (/^\d+$/.test(str)) { const n = parseInt(str); if (n >= 0 && n < 60) absences = n; }
+                            const cell = row[j];
+                            if (cell === undefined || cell === null || String(cell).trim() === '') continue;
+                            const str = String(cell).trim();
+                            const upper = str.toUpperCase();
+                            if (/^(T|K|Đ|CĐ|G|TB|Y|TỐT|KHÁ|ĐẠT|CHƯA ĐẠT|GIỎI|YẾU|TRUNG BÌNH|KÉM)$/.test(upper)) {
+                                ratingsFound.push(upper);
+                                continue;
+                            }
+                            if (/^\d+$/.test(str)) {
+                                const n = parseInt(str, 10);
+                                if (n >= 0 && n < 60) absences = n; 
+                            }
                         }
-                        if (ratings.length >= 1) academicResult = ratings[0];
-                        if (ratings.length >= 2) conductRating = ratings[1];
+                        if (ratingsFound.length >= 2) {
+                            academicResult = ratingsFound[0];
+                            conductRating = ratingsFound[1];
+                        } else if (ratingsFound.length === 1) {
+                            academicResult = ratingsFound[0];
+                        }
                     }
 
-                    if ((role === TeacherRole.SUBJECT && (subjectScore !== undefined || subjectRating)) || (role === TeacherRole.HOMEROOM && (academicResult || conductRating || absences))) {
-                        students.push({
-                            id: `xls-${Date.now()}-${rowIndex}`,
-                            name: fullName,
-                            comment: '',
-                            isProcessing: false,
-                            subjectScore, subjectRating, academicResult, conductRating, absences
-                        });
-                    }
+                    const hasData = (role === TeacherRole.SUBJECT) 
+                        ? (subjectScore !== undefined || subjectRating !== undefined)
+                        : (academicResult !== undefined || conductRating !== undefined || absences !== undefined);
+
+                    if (!hasIndex && !hasData) return;
+
+                    students.push({
+                        id: `student-xls-${Date.now()}-${rowIndex}`,
+                        name: fullName,
+                        comment: '',
+                        isProcessing: false,
+                        subjectScore,
+                        subjectRating,
+                        academicResult,
+                        conductRating,
+                        absences
+                    });
                 });
                 return { students, detectedSubject };
-            } catch (e) { console.error(e); return { students: [] }; }
+            } catch (e) {
+                console.error("Excel Parsing Error:", e);
+                return { students: [] };
+            }
         };
 
-        // --- LOGIC AI (Từ geminiService.ts) ---
+        // --- GEMINI SERVICE ---
+        const getStoredKey = () => localStorage.getItem('GEMINI_API_KEY') || "";
         const getAIClient = (key) => {
-            if (!key) throw new Error("MISSING_API_KEY");
-            if (!window.GenAI_Libs || !window.GenAI_Libs.GoogleGenAI) {
-                throw new Error("Thư viện AI chưa tải xong. Vui lòng đợi 5s rồi thử lại.");
+            const apiKey = key || getStoredKey();
+            if (!apiKey) throw new Error("MISSING_API_KEY");
+            return new GoogleGenAI({ apiKey });
+        };
+
+        const CANDIDATE_MODELS = [
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite-preview-02-05", 
+            "gemini-1.5-flash", 
+            "gemini-flash-latest"
+        ];
+        
+        const getActiveModel = () => localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
+
+        const callWithRetry = async (fn, retries = 3, baseDelay = 3000) => {
+            for (let i = 0; i < retries; i++) {
+                try { return await fn(); } catch (error) {
+                    const msg = error.message || "";
+                    const isTransient = msg.includes("429") || msg.includes("503") || msg.includes("overloaded") || msg.includes("quota");
+                    if (!isTransient || i === retries - 1) throw error;
+                    const waitTime = baseDelay * (i + 1);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
             }
-            return new window.GenAI_Libs.GoogleGenAI({ apiKey: key });
         };
 
         const testApiConnection = async (apiKey) => {
-            const ai = getAIClient(apiKey);
+            const ai = new GoogleGenAI({ apiKey });
             let lastError = null;
             for (const model of CANDIDATE_MODELS) {
                 try {
-                    await ai.models.generateContent({ model, contents: "Hello" });
+                    await ai.models.generateContent({ model: model, contents: "Hello" });
                     localStorage.setItem('GEMINI_ACTIVE_MODEL', model);
                     return true;
                 } catch (e) {
                     lastError = e;
-                    const m = e.message || "";
-                    if (m.includes("400") || m.includes("INVALID") || m.includes("403")) throw e;
+                    const msg = e.message || "";
+                    if (msg.includes("400") || msg.includes("INVALID_ARGUMENT") || msg.includes("API_KEY_INVALID") || msg.includes("403")) throw e;
                 }
             }
             throw lastError;
         };
 
-        const generateCommentsBatch = async (students, role, subjectName) => {
-            const key = localStorage.getItem('GEMINI_API_KEY');
-            const ai = getAIClient(key);
-            const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
-            
-            const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
-            let prompt = `Bạn là giáo viên. Viết nhận xét ngắn gọn (TỐI ĐA ${wordLimit} từ).`;
-            if (role === TeacherRole.SUBJECT) {
-                prompt += ` Môn ${subjectName}. Giỏi/Tốt (>=8): Khen năng lực. Khá (6.5-7.9): Khen cố gắng. TB (5-6.4): Nhắc chăm chỉ. Yếu (<5): Nhắc ôn tập.`;
-            } else {
-                prompt += ` GVCN. Tốt: Khen ngoan. Khá: Khen phấn đấu. Cần cố gắng: Nhắc nhở. Chuyên cần: Nhắc nếu nghỉ nhiều.`;
-            }
-
-            // Lấy Type, Schema từ window
-            const { Type, HarmCategory, HarmBlockThreshold } = window.GenAI_Libs;
-            
-            const schema = {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: { id: { type: Type.STRING }, comment: { type: Type.STRING } },
-                    required: ["id", "comment"]
-                }
-            };
-
-            const payload = students.map(s => role === TeacherRole.SUBJECT 
-                ? { id: s.id, name: s.name, result: s.subjectScore ?? s.subjectRating }
-                : { id: s.id, name: s.name, kqht: s.academicResult, kqrl: s.conductRating, absences: s.absences }
-            );
-
-            let retries = 3;
-            while (retries > 0) {
-                try {
-                    const result = await ai.models.generateContent({
-                        model,
-                        contents: JSON.stringify(payload),
-                        config: {
-                            systemInstruction: prompt,
-                            responseMimeType: "application/json",
-                            responseSchema: schema,
-                            safetySettings: [{ category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE }]
-                        }
-                    });
-                    const data = JSON.parse(result.text);
-                    const map = new Map();
-                    if (Array.isArray(data)) data.forEach(item => map.set(item.id, item.comment));
-                    return map;
-                } catch (e) {
-                    if (e.message && (e.message.includes("429") || e.message.includes("503") || e.message.includes("quota"))) {
-                        retries--;
-                        await new Promise(r => setTimeout(r, 2000 + (3-retries)*1000));
-                    } else {
-                        throw e;
-                    }
-                }
-            }
-            throw new Error("Server quá tải (429). Vui lòng thử lại sau ít phút.");
-        };
-
-        const extractDataFromMedia = async (base64, mimeType, role) => {
-            const key = localStorage.getItem('GEMINI_API_KEY');
-            const ai = getAIClient(key);
-            const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
-            const { Type } = window.GenAI_Libs;
-
+        const extractDataFromMedia = async (base64Data, mimeType, role) => {
+            const ai = getAIClient();
+            const modelName = getActiveModel();
             const prompt = role === TeacherRole.SUBJECT 
-                ? "Trích xuất danh sách: Họ tên, Điểm (hoặc xếp loại). JSON format."
-                : "Trích xuất danh sách: Họ tên, KQHT, KQRL, Số ngày nghỉ. JSON format.";
-            
+                ? `Bạn là trợ lý nhập liệu. Hãy phân tích hình ảnh/PDF bảng điểm này:
+                1. TÌM TÊN MÔN HỌC: Đọc kỹ tiêu đề bảng.
+                2. TRÍCH XUẤT DANH SÁCH HỌC SINH:
+                - Cột họ tên: Lấy đầy đủ.
+                - Cột điểm: Tìm cột điểm tổng kết cuối cùng.
+                - Cột xếp loại: Tìm cột xếp loại hoặc Đ/CĐ.
+                - Chỉ lấy dòng chứa thông tin học sinh.`
+                : `Bạn là trợ lý nhập liệu. Trích xuất bảng tổng kết:
+                - Họ tên.
+                - Kết quả học tập (KQHT).
+                - Kết quả rèn luyện (KQRL).
+                - Số ngày nghỉ.`;
+
             const responseSchema = {
                 type: Type.OBJECT,
                 properties: {
@@ -302,114 +344,238 @@
                 required: ["students"]
             };
 
-            const response = await ai.models.generateContent({
-                model,
-                contents: { parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }] },
-                config: { responseMimeType: "application/json", responseSchema }
+            return callWithRetry(async () => {
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
+                    config: { responseMimeType: "application/json", responseSchema: responseSchema }
+                });
+                
+                let rawData;
+                try { rawData = JSON.parse(response.text); } catch (e) {
+                    try { rawData = JSON.parse(response.text.replace(/```json/g, '').replace(/```/g, '').trim()); } catch (e2) { return { students: [] }; }
+                }
+
+                const studentsList = rawData.students || (Array.isArray(rawData) ? rawData : []);
+                const students = studentsList.map((item, idx) => ({
+                    id: `student-img-${Date.now()}-${idx}`,
+                    name: item.name || `Học sinh ${idx + 1}`,
+                    subjectScore: item.score,
+                    subjectRating: item.rating,
+                    academicResult: item.kqht,
+                    conductRating: item.kqrl,
+                    absences: item.absences,
+                    comment: '',
+                    isProcessing: false
+                }));
+                
+                const normalizeSubjectName = (rawName) => {
+                    if (!rawName) return undefined;
+                    const s = rawName.toLowerCase();
+                    if (s.includes('toán')) return 'Toán';
+                    if (s.includes('văn') || s.includes('việt')) return 'Văn';
+                    if (s.includes('khtn') || s.includes('lý') || s.includes('hóa') || s.includes('sinh')) return 'KHTN';
+                    if (s.includes('ls') || s.includes('sử') || s.includes('địa')) return 'LS & ĐL';
+                    if (s.includes('tin')) return 'Tin học';
+                    if (s.includes('anh')) return 'Ng.ngữ';
+                    if (s.includes('gdcd')) return 'GDCD';
+                    if (s.includes('công nghệ')) return 'C.nghệ';
+                    if (s.includes('thể')) return 'GDTC';
+                    if (s.includes('nhạc') || s.includes('mỹ')) return 'Nghệ thuật';
+                    return undefined;
+                };
+
+                return { students, detectedSubject: normalizeSubjectName(rawData.subjectName) };
             });
-            
-            const raw = JSON.parse(response.text);
-            const students = (raw.students || []).map((item, idx) => ({
-                id: `img-${Date.now()}-${idx}`,
-                name: item.name,
-                subjectScore: item.score,
-                subjectRating: item.rating,
-                academicResult: item.kqht,
-                conductRating: item.kqrl,
-                absences: item.absences,
-                comment: '',
-                isProcessing: false
-            }));
-            return { students, detectedSubject: raw.subjectName };
         };
 
-        // --- COMPONENTS ---
-        const ApiKeyModal = ({ onSave, onClear, hasKey }) => {
-            const [key, setKey] = useState("");
-            const [status, setStatus] = useState({ type: 'none', msg: '' });
-            const [loading, setLoading] = useState(false);
+        const generateCommentsBatch = async (students, role, subjectName = "Môn học") => {
+            if (students.length === 0) return new Map();
+            const ai = getAIClient();
+            const modelName = getActiveModel();
+            
+            let logicRules = "", roleInstruction = "";
+            const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
 
-            const check = async () => {
-                const cleanKey = key.trim();
+            if (role === TeacherRole.SUBJECT) {
+                roleInstruction = `Bạn là Giáo viên bộ môn dạy môn ${subjectName}.`;
+                logicRules = `Điểm Giỏi (>= 8.0) hoặc Đạt Tốt: Khen ngợi năng lực đặc thù. Điểm Khá: Ghi nhận cố gắng. Điểm TB: Nhắc nhở chăm chỉ. Yếu/Kém: Nhắc ôn tập.`;
+            } else {
+                roleInstruction = `Bạn là Giáo viên chủ nhiệm lớp.`;
+                logicRules = `Tốt/Toàn diện: Khen ngợi. Khá: Ghi nhận phấn đấu. Cần cố gắng: Khuyên cải thiện. Chuyên cần: Nhắc nếu nghỉ nhiều.`;
+            }
+
+            const systemInstruction = `${roleInstruction} Viết nhận xét ngắn gọn cho học bạ. KHÔNG QUÁ ${wordLimit} từ. Văn phong sư phạm. ${logicRules}`;
+            const outputSchema = {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: { id: { type: Type.STRING }, comment: { type: Type.STRING } },
+                    required: ["id", "comment"]
+                }
+            };
+
+            const studentPayload = students.map(s => role === TeacherRole.SUBJECT 
+                ? { id: s.id, name: s.name, score: s.subjectScore !== undefined ? s.subjectScore : s.subjectRating }
+                : { id: s.id, name: s.name, kqht: s.academicResult, kqrl: s.conductRating, absences: s.absences }
+            );
+
+            return callWithRetry(async () => {
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: JSON.stringify(studentPayload),
+                    config: {
+                        systemInstruction: systemInstruction,
+                        responseMimeType: "application/json",
+                        responseSchema: outputSchema,
+                        safetySettings: [
+                            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                        ]
+                    },
+                });
+
+                let parsedResults;
+                try { parsedResults = JSON.parse(response.text); } catch {
+                    try {
+                        let jsonStr = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+                        const firstBracket = jsonStr.indexOf('[');
+                        const lastBracket = jsonStr.lastIndexOf(']');
+                        if (firstBracket !== -1 && lastBracket !== -1) jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+                        parsedResults = JSON.parse(jsonStr);
+                    } catch (e) { return new Map(); }
+                }
+                
+                const commentMap = new Map();
+                if (Array.isArray(parsedResults)) {
+                    parsedResults.forEach(item => { if (item && item.id && item.comment) commentMap.set(item.id, item.comment); });
+                }
+                return commentMap;
+            });
+        };
+
+        // --- 3. COMPONENTS ---
+
+        // API KEY MODAL
+        const ApiKeyModal = ({ onSave, onClear, hasKey = false }) => {
+            const [inputKey, setInputKey] = useState("");
+            const [isChecking, setIsChecking] = useState(false);
+            const [status, setStatus] = useState('none');
+            const [statusMsg, setStatusMsg] = useState("");
+            
+            const handleCheckAndSave = async () => {
+                const cleanKey = inputKey.trim();
                 if (!cleanKey) return;
-                setLoading(true); setStatus({ type: 'none', msg: '' });
+                setIsChecking(true); setStatus('none');
                 try {
                     await testApiConnection(cleanKey);
-                    setStatus({ type: 'success', msg: 'Key hợp lệ! Đang lưu...' });
+                    setStatus('success');
                     setTimeout(() => onSave(cleanKey), 1000);
-                } catch (e) { 
-                    console.error(e);
-                    let m = e.message || "";
-                    if (m.includes("400") || m.includes("INVALID")) m = "Key không đúng.";
-                    else if (m.includes("403")) m = "Key lỗi quyền truy cập.";
-                    else m = "Lỗi: " + m.slice(0, 50);
-                    setStatus({ type: 'error', msg: m });
-                }
-                setLoading(false);
+                } catch (err) {
+                    setStatus('error');
+                    let msg = err.message || "";
+                    if (msg.includes('404')) setStatusMsg("Lỗi 404: Key chưa kích hoạt hoặc sai.");
+                    else if (msg.includes('429')) setStatusMsg("Lỗi 429: Server bận.");
+                    else setStatusMsg("Key không hợp lệ.");
+                } finally { setIsChecking(false); }
             };
 
             return (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full">
-                        <h2 className="text-2xl font-bold text-center mb-4">Cấu hình API Key</h2>
-                        <div className="bg-slate-50 p-3 rounded mb-4 text-sm"><a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 font-bold">Lấy Key tại đây</a> (AI Studio).</div>
-                        <input type="password" value={key} onChange={e => {setKey(e.target.value); setStatus({type:'none',msg:''})}} onKeyDown={e=>e.key==='Enter'&&check()} placeholder="Dán API Key..." className="w-full p-3 border rounded mb-2" />
-                        {status.type === 'error' && <p className="text-red-500 text-sm mb-2">{status.msg}</p>}
-                        {status.type === 'success' && <p className="text-green-600 text-sm mb-2">{status.msg}</p>}
-                        <button onClick={check} disabled={loading||!key} className="w-full py-3 bg-blue-600 text-white rounded font-bold">{loading ? "Đang kiểm tra..." : "Lưu Key"}</button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 relative">
+                        <h2 className="text-2xl font-bold text-center text-slate-800 mb-4">Cấu hình API Key</h2>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm text-slate-700 mb-4">
+                            <p className="font-bold">Cách lấy Key miễn phí:</p>
+                            <p>1. Truy cập <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 underline">Google AI Studio</a>.</p>
+                            <p>2. Chọn "Create API key".</p>
+                        </div>
+                        <input type="password" value={inputKey} onChange={(e) => setInputKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCheckAndSave()} placeholder="Dán Key vào đây (AIza...)" className="w-full px-4 py-3 rounded-lg border border-slate-300 mb-2 font-mono"/>
+                        {status === 'error' && <p className="text-red-600 text-xs mb-2">{statusMsg}</p>}
+                        {status === 'success' && <p className="text-green-600 text-xs mb-2">✅ Key hợp lệ!</p>}
+                        <button onClick={handleCheckAndSave} disabled={isChecking} className={`w-full py-3 text-white font-bold rounded-lg ${status === 'success' ? 'bg-green-600' : 'bg-primary'}`}>{isChecking ? 'Đang kiểm tra...' : 'Bắt đầu'}</button>
+                        {hasKey && onClear && <button onClick={onClear} className="w-full mt-2 text-red-600 text-sm">Xóa Key cũ</button>}
                     </div>
                 </div>
             );
         };
 
-        const StudentList = ({ students, role, subjectName, onUpdate, onGenOne, onGenAll, onDelete, onChangeSubject, isGen }) => {
-            const tableRef = useRef();
+        // STUDENT LIST
+        const StudentList = ({ students, role, subjectName, onUpdateStudent, onRegenerateSingle, onRegenerateAll, onChangeSubject, onDeleteStudent, isGenerating }) => {
+            const tableRef = useRef(null);
             const [colWidths, setColWidths] = useState({ stt: 50, name: 200, result: 150, comment: 400, action: 120 });
-            const resizingRef = useRef(null);
-
-            const startResize = (e, col) => { e.preventDefault(); resizingRef.current = { col, startX: e.clientX, startWidth: colWidths[col] }; document.addEventListener('mousemove', doResize); document.addEventListener('mouseup', stopResize); };
-            const doResize = (e) => { if (!resizingRef.current) return; const diff = e.clientX - resizingRef.current.startX; setColWidths(p => ({...p, [resizingRef.current.col]: Math.max(50, resizingRef.current.startWidth + diff)})); };
-            const stopResize = () => { resizingRef.current = null; document.removeEventListener('mousemove', doResize); document.removeEventListener('mouseup', stopResize); };
+            
+            const getStatusColor = (score, rating, kqht) => {
+                if (score !== undefined) return score >= 8 ? 'text-green-600 font-bold bg-green-50' : score < 5 ? 'text-red-500 font-bold bg-red-50' : 'text-slate-700 font-semibold';
+                const r = (rating || kqht || '').toLowerCase();
+                return (r.includes('tốt') || r === 't') ? 'text-green-600 font-bold bg-green-50' : (r.includes('chưa') || r === 'cđ') ? 'text-red-500 font-bold bg-red-50' : 'text-slate-700 font-semibold';
+            };
 
             const exportExcel = () => {
-                const ws = XLSX.utils.json_to_sheet(students.map((s, i) => ({ STT: i+1, 'Họ tên': s.name, 'Kết quả': role===TeacherRole.SUBJECT?(s.subjectScore??s.subjectRating):`${s.academicResult}-${s.conductRating}`, 'Nhận xét': s.comment })));
+                const ws = XLSX.utils.json_to_sheet(students.map((s, i) => ({
+                    STT: i + 1, 'Họ và tên': s.name, 
+                    ...(role === TeacherRole.SUBJECT ? { 'Điểm/ĐG': s.subjectScore ?? s.subjectRating } : { 'KQHT': s.academicResult, 'KQRL': s.conductRating, 'Nghỉ': s.absences }),
+                    'Nhận xét': s.comment
+                })));
                 const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "NhanXet");
-                XLSX.writeFile(wb, "NhanXet.xlsx");
+                XLSX.writeFile(wb, `NhanXet_${role}.xlsx`);
             };
-            
+
+            const exportPDF = async () => {
+                if (!tableRef.current) return;
+                const canvas = await html2canvas(tableRef.current, { scale: 2 });
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), (canvas.height * pdf.internal.pageSize.getWidth()) / canvas.width);
+                pdf.save(`NhanXet.pdf`);
+            };
+
+            const SUBJECTS = ["Toán", "Văn", "LS & ĐL", "KHTN", "Tin học", "Ng.ngữ", "GDCD", "C.nghệ", "GDTC", "Nghệ thuật", "NDGDCĐP", "HĐTN&HN", "Khác ..."];
+
             return (
-                <div className="bg-white rounded-xl shadow border flex flex-col h-full overflow-hidden animate-fade-in-up">
-                    <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
-                        <div className="flex gap-2 items-center">
-                            <span className="font-bold">{students.length} HS</span>
-                            {role === TeacherRole.SUBJECT && <select value={subjectName} onChange={e=>onChangeSubject(e.target.value)} className="border rounded p-1"><option disabled value="">-Môn-</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select>}
+                <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full overflow-hidden animate-fade-in">
+                    <div className="p-4 bg-slate-50 border-b flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <span className="font-bold text-slate-800 text-lg"><span className="bg-white px-2 py-0.5 rounded border shadow-sm">{students.length}</span> HS</span>
+                            {role === TeacherRole.SUBJECT && <select value={subjectName} onChange={(e) => onChangeSubject(e.target.value)} className="bg-white border rounded px-3 py-1 font-semibold">{SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>}
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={onGenAll} disabled={isGen} className="bg-blue-600 text-white px-3 py-1 rounded font-bold shadow disabled:opacity-50">{isGen ? 'Wait...' : '⚡ Tạo lại hết'}</button>
-                            <button onClick={exportExcel} className="bg-green-600 text-white px-3 py-1 rounded font-bold shadow">Excel</button>
+                            <button onClick={onRegenerateAll} disabled={isGenerating} className={`px-4 py-2 bg-blue-600 text-white rounded font-bold ${isGenerating ? 'opacity-70' : ''}`}>{isGenerating ? 'Đang tạo...' : 'Tạo lại hết'}</button>
+                            <button onClick={exportExcel} className="px-3 py-2 bg-white border rounded text-green-600 font-bold">Excel</button>
+                            <button onClick={exportPDF} className="px-3 py-2 bg-white border rounded text-red-600 font-bold">PDF</button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-auto p-4" ref={tableRef}>
-                        <table className="w-full border-collapse border text-left" style={{tableLayout:'fixed'}}>
-                            <thead className="bg-slate-100 sticky top-0 z-10">
+                    <div className="overflow-auto flex-1 p-4" ref={tableRef}>
+                        <table className="w-full text-left border-collapse border border-slate-200 rounded-lg">
+                            <thead className="bg-slate-50 text-slate-700 text-xs font-bold uppercase sticky top-0 z-10">
                                 <tr>
-                                    {Object.keys(colWidths).map(col => (
-                                        <th key={col} className="p-2 border relative" style={{width: colWidths[col]}}>
-                                            {col.toUpperCase()} <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500" onMouseDown={e=>startResize(e, col)}></div>
-                                        </th>
-                                    ))}
+                                    <th className="p-4 border" style={{width: colWidths.stt}}>STT</th>
+                                    <th className="p-4 border" style={{width: colWidths.name}}>Họ Tên</th>
+                                    <th className="p-4 border" style={{width: colWidths.result}}>Kết quả</th>
+                                    <th className="p-4 border" style={{width: colWidths.comment}}>Nhận xét</th>
+                                    <th className="p-4 border text-center" style={{width: colWidths.action}} data-html2canvas-ignore="true">Tác vụ</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {students.map((s, i) => (
                                     <tr key={s.id} className="hover:bg-blue-50">
-                                        <td className="p-2 border text-center">{i+1}</td>
-                                        <td className="p-2 border font-semibold truncate" title={s.name}>{s.name}</td>
-                                        <td className="p-2 border text-sm">{role===TeacherRole.SUBJECT ? <span className="font-bold text-blue-700">{s.subjectScore??s.subjectRating}</span> : <span>HT:{s.academicResult} RL:{s.conductRating}</span>}</td>
-                                        <td className="p-2 border"><textarea className="w-full h-full min-h-[50px] bg-transparent outline-none resize-none" value={s.comment} onChange={e=>onUpdate(s.id, {comment:e.target.value})} placeholder="..."></textarea></td>
-                                        <td className="p-2 border text-center">
-                                            <button onClick={()=>onGenOne(s)} className="text-blue-600 mx-1">↺</button>
-                                            <button onClick={()=>onDelete(s.id)} className="text-red-500 mx-1">✕</button>
+                                        <td className="p-3 text-center border text-slate-500">{i + 1}</td>
+                                        <td className="p-3 font-semibold border">{s.name}</td>
+                                        <td className="p-3 border text-sm">
+                                            {role === TeacherRole.SUBJECT 
+                                                ? <span className={`px-2 py-0.5 rounded ${getStatusColor(s.subjectScore, s.subjectRating)}`}>{s.subjectScore ?? s.subjectRating}</span>
+                                                : <div className="flex flex-col"><span className={getStatusColor(undefined, undefined, s.academicResult)}>HT: {s.academicResult}</span><span>RL: {s.conductRating}</span>{s.absences ? <span className="text-red-500">Nghỉ: {s.absences}</span> : null}</div>
+                                            }
+                                        </td>
+                                        <td className="p-2 border relative group/textarea">
+                                            {s.isProcessing ? <div className="animate-pulse h-10 bg-slate-200 rounded"></div> : 
+                                            <textarea className="w-full h-full min-h-[44px] bg-transparent resize-none outline-none" value={s.comment} onChange={(e) => onUpdateStudent(s.id, {comment: e.target.value})} placeholder="Chưa có nhận xét..."></textarea>}
+                                        </td>
+                                        <td className="p-2 border text-center" data-html2canvas-ignore="true">
+                                            <div className="flex justify-center gap-2">
+                                                <button onClick={() => onRegenerateSingle(s)} className="text-blue-600 hover:bg-blue-100 p-1 rounded" title="Viết lại">↺</button>
+                                                <button onClick={() => onDeleteStudent(s.id)} className="text-red-500 hover:bg-red-100 p-1 rounded" title="Xóa">✕</button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -420,107 +586,139 @@
             );
         };
 
-        // --- MAIN APP ---
+        // --- 4. MAIN APP ---
         function App() {
             const [role, setRole] = useState(TeacherRole.SUBJECT);
             const [students, setStudents] = useState([]);
-            const [subject, setSubject] = useState('Toán');
-            const [isGen, setIsGen] = useState(false);
+            const [subjectName, setSubjectName] = useState('Toán');
+            const [isGenerating, setIsGenerating] = useState(false);
             const [isExtracting, setIsExtracting] = useState(false);
-            const [status, setStatus] = useState("");
-            const [showKey, setShowKey] = useState(false);
-            const [error, setError] = useState("");
-            const [aiReady, setAiReady] = useState(false);
+            const [errorMsg, setErrorMsg] = useState(null);
+            const [statusMsg, setStatusMsg] = useState(""); 
+            const [showKeyModal, setShowKeyModal] = useState(false);
+            const [showAbout, setShowAbout] = useState(false);
+            const fileInputRef = useRef(null);
 
-            // Chờ AI load xong
-            useEffect(() => {
-                const check = setInterval(() => {
-                    if (window.isGenAILoaded) { setAiReady(true); clearInterval(check); }
-                }, 500);
-                if (!localStorage.getItem('GEMINI_API_KEY')) setShowKey(true);
-            }, []);
+            useEffect(() => { if (!getStoredKey()) setShowKeyModal(true); }, []);
 
-            const runAI = async (targets, sub) => {
-                if (!targets.length) return;
-                setIsGen(true); setError(""); setStatus("Đang xử lý...");
-                setStudents(prev => prev.map(s => targets.find(t => t.id === s.id) ? {...s, isProcessing: true} : s));
-                
+            const handleSaveKey = (key) => { localStorage.setItem('GEMINI_API_KEY', key); setShowKeyModal(false); setErrorMsg(null); };
+            const handleClearKey = () => { localStorage.removeItem('GEMINI_API_KEY'); setShowKeyModal(true); };
+
+            const updateStudent = (id, updates) => setStudents(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+            const deleteStudent = (id) => setStudents(prev => prev.filter(s => s.id !== id));
+
+            const executeGeneration = async (targetStudents, currentSubject) => {
+                if (targetStudents.length === 0) return;
+                setIsGenerating(true); setErrorMsg(null); setStatusMsg("Đang chuẩn bị...");
+                setStudents(prev => prev.map(s => ({ ...s, isProcessing: true })));
+
                 try {
                     const chunkSize = 5;
-                    for (let i=0; i<targets.length; i+=chunkSize) {
-                        const chunk = targets.slice(i, i+chunkSize);
-                        setStatus(`Nhóm ${i/chunkSize + 1}...`);
-                        const map = await generateCommentsBatch(chunk, role, sub);
-                        setStudents(prev => prev.map(s => map.has(s.id) ? {...s, comment: map.get(s.id), isProcessing: false} : (chunk.find(c=>c.id===s.id)?{...s, isProcessing:false}:s)));
-                        if (i+chunkSize < targets.length) await new Promise(r=>setTimeout(r, 4000));
+                    for (let i = 0; i < targetStudents.length; i += chunkSize) {
+                        const chunk = targetStudents.slice(i, i + chunkSize);
+                        const progress = Math.round((i / targetStudents.length) * 100);
+                        setStatusMsg(`Đang xử lý ${i+1}-${Math.min(i+chunkSize, targetStudents.length)} (${progress}%)...`);
+                        
+                        const commentsMap = await generateCommentsBatch(chunk, role, currentSubject);
+                        setStudents(prev => prev.map(s => {
+                            if (commentsMap.has(s.id)) return { ...s, comment: commentsMap.get(s.id), isProcessing: false };
+                            if (chunk.find(c => c.id === s.id)) return { ...s, isProcessing: false };
+                            return s;
+                        }));
+
+                        if (i + chunkSize < targetStudents.length) {
+                            for (let t = 4; t > 0; t--) { setStatusMsg(`⏳ Đang "nghỉ" ${t}s... (${progress}%)`); await new Promise(r => setTimeout(r, 1000)); }
+                        }
                     }
-                    setStatus("");
-                } catch (e) {
-                    setError(e.message);
-                    if (e.message.includes("MISSING")) setShowKey(true);
-                    setStudents(prev => prev.map(s => ({...s, isProcessing: false})));
-                } finally { setIsGen(false); }
+                    setStatusMsg("");
+                } catch (err) {
+                    if (err.message === "MISSING_API_KEY") { setShowKeyModal(true); setErrorMsg("Thiếu API Key."); }
+                    else if (err.message.includes("429")) setErrorMsg("⚠️ Hết lượt sử dụng, vui lòng đợi.");
+                    else setErrorMsg("Lỗi AI: " + err.message);
+                    setStudents(prev => prev.map(s => ({ ...s, isProcessing: false })));
+                } finally { setIsGenerating(false); }
             };
 
             const processFile = async (file) => {
-                setError(""); setStudents([]);
-                if (file.name.match(/\.xls|xlsx/)) {
-                    const buf = await file.arrayBuffer();
-                    const res = parseExcelData(buf, role);
-                    if (res.students.length) { setStudents(res.students); if(res.detectedSubject) setSubject(res.detectedSubject); runAI(res.students, res.detectedSubject||subject); }
-                    else setError("Lỗi đọc Excel");
-                } else if (file.type.match(/image|pdf/)) {
+                setErrorMsg(null); setStudents([]);
+                let newStudents = [], detectedSub = undefined;
+                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                    const data = await file.arrayBuffer();
+                    const res = parseExcelData(data, role);
+                    newStudents = res.students; detectedSub = res.detectedSubject;
+                    if (newStudents.length === 0) setErrorMsg("File Excel không có dữ liệu hợp lệ.");
+                } else if (file.type.startsWith('image/') || file.type === 'application/pdf') {
                     setIsExtracting(true);
-                    const reader = new FileReader();
-                    reader.onloadend = async () => {
-                        try {
-                            const res = await extractDataFromMedia(reader.result.split(',')[1], file.type, role);
-                            if(res.students.length) { setStudents(res.students); if(res.detectedSubject) setSubject(res.detectedSubject); runAI(res.students, res.detectedSubject||subject); }
-                            else setError("Không tìm thấy HS trong ảnh.");
-                        } catch(e) { setError(e.message); if(e.message.includes("MISSING")) setShowKey(true); }
-                        setIsExtracting(false);
-                    };
-                    reader.readAsDataURL(file);
+                    try {
+                        const reader = new FileReader();
+                        await new Promise((resolve) => {
+                            reader.onloadend = async () => {
+                                try {
+                                    const res = await extractDataFromMedia(reader.result.split(',')[1], file.type, role);
+                                    newStudents = res.students; detectedSub = res.detectedSubject;
+                                    if (newStudents.length === 0) setErrorMsg("Không tìm thấy thông tin HS trong ảnh.");
+                                } catch (e) { setErrorMsg(e.message); }
+                                resolve();
+                            };
+                            reader.readAsDataURL(file);
+                        });
+                    } finally { setIsExtracting(false); }
+                }
+                if (newStudents.length > 0) {
+                    setStudents(newStudents);
+                    const sub = detectedSub || subjectName;
+                    if (detectedSub) setSubjectName(detectedSub);
+                    executeGeneration(newStudents, sub);
                 }
             };
 
-            if (!aiReady) return <div className="fixed inset-0 flex items-center justify-center bg-white"><div className="spinner"></div><p className="ml-3">Đang tải thư viện AI...</p></div>;
+            const handleRegenerateSingle = async (s) => {
+                updateStudent(s.id, { isProcessing: true });
+                try {
+                    const map = await generateCommentsBatch([s], role, subjectName);
+                    updateStudent(s.id, { comment: map.get(s.id) || "", isProcessing: false });
+                } catch (e) { updateStudent(s.id, { isProcessing: false }); }
+            };
 
             return (
-                <div className="min-h-screen flex flex-col bg-slate-50">
-                    <header className="bg-white border-b h-16 flex items-center justify-between px-6 sticky top-0 z-30 shadow-sm">
-                        <h1 className="text-xl font-bold bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">Trợ lý Học bạ AI</h1>
-                        <div className="flex gap-3">
-                            <div className="flex bg-slate-100 p-1 rounded">
-                                <button onClick={()=>{setRole(TeacherRole.SUBJECT);setStudents([])}} className={`px-3 py-1 rounded text-sm font-bold ${role===TeacherRole.SUBJECT?'bg-white shadow text-blue-700':'text-slate-500'}`}>GVBM</button>
-                                <button onClick={()=>{setRole(TeacherRole.HOMEROOM);setStudents([])}} className={`px-3 py-1 rounded text-sm font-bold ${role===TeacherRole.HOMEROOM?'bg-white shadow text-blue-700':'text-slate-500'}`}>GVCN</button>
+                <div className="min-h-screen flex flex-col font-sans bg-slate-50 relative selection:bg-blue-100">
+                    <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-30 shadow-sm h-16 flex items-center justify-between px-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-blue-600 text-white rounded flex items-center justify-center font-bold">AI</div>
+                            <h1 className="text-xl font-bold text-slate-800">Trợ lý Nhận xét Học bạ</h1>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="bg-slate-100 p-1 rounded-lg flex">
+                                <button onClick={() => { setRole(TeacherRole.SUBJECT); setStudents([]); }} className={`px-4 py-1.5 rounded-md text-sm font-bold ${role === TeacherRole.SUBJECT ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>GV Bộ môn</button>
+                                <button onClick={() => { setRole(TeacherRole.HOMEROOM); setStudents([]); }} className={`px-4 py-1.5 rounded-md text-sm font-bold ${role === TeacherRole.HOMEROOM ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>GV Chủ nhiệm</button>
                             </div>
-                            <button onClick={()=>setShowKey(true)} className="text-slate-400 hover:text-yellow-500">🔑</button>
+                            <button onClick={() => setShowKeyModal(true)} className="text-slate-400 hover:text-yellow-600 font-bold text-xl" title="Cài đặt Key">🔑</button>
+                            <button onClick={() => setShowAbout(true)} className="text-slate-400 hover:text-blue-600 font-bold text-xl" title="Thông tin">ⓘ</button>
                         </div>
                     </header>
-                    <main className="flex-1 p-6 flex flex-col gap-4 max-w-7xl mx-auto w-full">
-                        {isGen && <div className="bg-blue-50 text-blue-700 p-2 rounded flex gap-2 items-center animate-pulse"><span className="font-bold">AI Processing:</span> {status}</div>}
-                        {!students.length ? (
-                            <div className="bg-white p-8 rounded-xl shadow-lg border-dashed border-2 border-slate-300 flex flex-col items-center justify-center min-h-[300px] hover:border-blue-400 transition-colors relative">
-                                {isExtracting ? <div className="spinner"></div> : <>
-                                    <div className="text-6xl mb-4">📂</div>
-                                    <p className="text-lg font-bold text-slate-700">Kéo thả file vào đây</p>
-                                    <p className="text-sm text-slate-500">Excel, PDF, Ảnh chụp bảng điểm</p>
-                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e=>processFile(e.target.files[0])} accept=".xlsx,.xls,.pdf,image/*" />
-                                </>}
-                                {error && <p className="text-red-500 mt-4 font-bold">{error}</p>}
-                            </div>
-                        ) : (
-                            <StudentList 
-                                students={students} role={role} subjectName={subject} 
-                                onUpdate={(id,d)=>setStudents(p=>p.map(s=>s.id===id?{...s,...d}:s))}
-                                onGenOne={s=>runAI([s], subject)} onGenAll={()=>runAI(students, subject)} 
-                                onDelete={id=>setStudents(p=>p.filter(s=>s.id!==id))}
-                                onChangeSubject={setSubject} isGen={isGen} 
-                            />
+                    <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 flex flex-col gap-6">
+                        {isGenerating && statusMsg && <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-center justify-between animate-fade-in"><span className="font-bold flex items-center gap-2"><span className="animate-spin">⏳</span> {statusMsg}</span><span className="text-xs bg-white px-2 py-1 rounded border">Safe Mode</span></div>}
+                        
+                        {students.length === 0 && (
+                            <section className="bg-white rounded-2xl shadow-xl border p-8 animate-fade-in-up text-center">
+                                <h2 className="text-xl font-bold mb-6">Nhập dữ liệu học sinh</h2>
+                                <label className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${isExtracting ? 'bg-blue-50 border-blue-400' : 'hover:bg-slate-50 border-slate-300'}`}>
+                                    {isExtracting ? <div className="flex flex-col items-center"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div><p className="font-bold text-blue-700">Đang đọc ảnh bảng điểm...</p></div> : 
+                                    <>
+                                        <div className="text-6xl mb-4">📂</div>
+                                        <p className="font-bold text-lg text-slate-700">Kéo thả file Excel, PDF hoặc Ảnh vào đây</p>
+                                        <p className="text-slate-500 mt-2">Hỗ trợ tốt nhất cho file Excel mẫu nhà trường</p>
+                                    </>}
+                                    <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.pdf,image/*" className="hidden" onChange={(e) => processFile(e.target.files[0])} disabled={isExtracting}/>
+                                </label>
+                                {errorMsg && <div className="mt-4 p-3 bg-red-50 text-red-600 rounded font-bold border border-red-200">{errorMsg}</div>}
+                            </section>
                         )}
+                        
+                        {students.length > 0 && <StudentList students={students} role={role} subjectName={subjectName} onUpdateStudent={updateStudent} onRegenerateSingle={handleRegenerateSingle} onRegenerateAll={() => executeGeneration(students, subjectName)} onChangeSubject={setSubjectName} onDeleteStudent={deleteStudent} isGenerating={isGenerating} />}
                     </main>
-                    {showKey && <ApiKeyModal onSave={k=>{localStorage.setItem('GEMINI_API_KEY',k);setShowKey(false)}} onClear={()=>{localStorage.removeItem('GEMINI_API_KEY');setShowKey(true)}} hasKey={!!localStorage.getItem('GEMINI_API_KEY')} />}
+                    {showKeyModal && <ApiKeyModal onSave={handleSaveKey} onClear={handleClearKey} hasKey={!!getStoredKey()} />}
+                    {showAbout && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"><div className="bg-white rounded-xl p-6 max-w-sm w-full"><h3 className="font-bold text-xl mb-4">Thông tin</h3><p className="text-slate-600 mb-4">Ứng dụng hỗ trợ viết nhận xét học bạ theo TT22.<br/>Tác giả: Nguyễn Chí Dũng.<br/>Đơn vị: THCS Đoàn Bảo Đức.</p><button onClick={() => setShowAbout(false)} className="w-full py-2 bg-slate-800 text-white rounded-lg font-bold">Đóng</button></div></div>}
                 </div>
             );
         }
