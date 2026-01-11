@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type, Schema, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { StudentData, TeacherRole } from "../types";
 
 // --- CẤU HÌNH API KEY ---
@@ -12,7 +12,9 @@ const getStoredKey = () => {
 const getAIClient = () => {
   let apiKey = getStoredKey();
 
+  // Trong môi trường Vite, process.env.API_KEY được inject từ vite.config.ts
   if (!apiKey) {
+    // @ts-ignore
     apiKey = process.env.API_KEY || "";
   }
   
@@ -24,7 +26,6 @@ const getAIClient = () => {
 };
 
 // DANH SÁCH MODEL SẼ THỬ LẦN LƯỢT
-// Cập nhật ưu tiên các model ổn định và mới nhất
 const CANDIDATE_MODELS = [
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite-preview-02-05", 
@@ -47,7 +48,7 @@ const getActiveModel = (): string => {
 const callWithRetry = async <T>(
   fn: () => Promise<T>, 
   retries: number = 3, 
-  baseDelay: number = 3000 // Tăng delay mặc định lên 3s
+  baseDelay: number = 3000
 ): Promise<T> => {
   for (let i = 0; i < retries; i++) {
     try {
@@ -60,7 +61,6 @@ const callWithRetry = async <T>(
         throw error;
       }
 
-      // Backoff: 3s -> 6s -> 9s
       const waitTime = baseDelay * (i + 1);
       console.warn(`Google Busy (Attempt ${i + 1}/${retries}). Retrying in ${waitTime}ms...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -187,7 +187,6 @@ export const extractDataFromMedia = async (
       try {
         rawData = JSON.parse(resultText);
       } catch (e) {
-        // CLEANUP MARKDOWN
         const clean = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
         try {
            rawData = JSON.parse(clean);
@@ -248,37 +247,34 @@ export const generateCommentsBatch = async (
   const ai = getAIClient();
   const modelName = getActiveModel();
 
-  let logicRules = "";
   let roleInstruction = "";
   const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
 
   if (role === TeacherRole.SUBJECT) {
       const characteristics = getSubjectCharacteristics(subjectName);
       roleInstruction = `Bạn là Giáo viên bộ môn dạy môn ${subjectName}.`;
-      logicRules = `
-        ĐẶC THÙ BỘ MÔN: ${characteristics}
-        QUY TẮC NHẬN XÉT (TỐI ĐA ${wordLimit} CHỮ):
-        - Điểm Giỏi (>= 8.0) hoặc Đạt Tốt: Khen ngợi năng lực đặc thù. (VD: "Học tốt, nắm chắc kiến thức.")
-        - Điểm Khá (6.5 - 7.9): Ghi nhận sự cố gắng. (VD: "Có cố gắng, cần cẩn thận hơn.")
-        - Điểm TB (5.0 - 6.4) hoặc Đạt: Nhắc nhở chăm chỉ. (VD: "Cần tập trung nghe giảng hơn.")
-        - Điểm Yếu/Kém (< 5.0) hoặc Chưa đạt: Nhắc ôn tập cơ bản. (VD: "Cần ôn lại kiến thức cơ bản.")
-      `;
+      // Logic đặc thù
   } else {
       roleInstruction = `Bạn là Giáo viên chủ nhiệm lớp.`;
-      logicRules = `
-        QUY TẮC NHẬN XÉT (TỐI ĐA ${wordLimit} CHỮ):
-        - Tốt/Toàn diện: Khen ngợi ngoan ngoãn, học giỏi.
-        - Khá: Ghi nhận ý thức phấn đấu.
-        - Cần cố gắng: Khuyên cải thiện môn yếu hoặc thái độ.
-        - Chuyên cần: Nhắc nhở nếu nghỉ nhiều.
-      `;
   }
 
-  const systemInstruction = `
+  const prompt = `
     ${roleInstruction}
-    Yêu cầu: Viết nhận xét ngắn gọn cho học bạ.
-    KHÔNG QUÁ ${wordLimit} từ. Văn phong sư phạm.
-    ${logicRules}
+    Nhiệm vụ: Viết nhận xét học bạ ngắn gọn, xúc tích (DƯỚI ${wordLimit} từ).
+    ${role === TeacherRole.SUBJECT ? 
+      `Quy tắc điểm số (Môn ${subjectName}):
+       - >=8.0 (Tốt/Giỏi): Khen năng lực (${getSubjectCharacteristics(subjectName)}).
+       - 6.5-7.9 (Khá): Khen cố gắng, nhắc nhở nhỏ.
+       - 5.0-6.4 (Đạt/TB): Nhắc tập trung hơn.
+       - <5.0 (CĐ/Yếu): Nhắc ôn kiến thức cơ bản.` 
+    : 
+      `Quy tắc GVCN:
+       - Tốt: Khen ngoan, học giỏi.
+       - Khá: Khen có phấn đấu.
+       - TB/Yếu: Nhắc nhở thái độ/học tập.
+       - Nghỉ nhiều: Nhắc chuyên cần.`
+    }
+    Output JSON array: [{ "id": "...", "comment": "..." }]
   `;
 
   const outputSchema: Schema = {
@@ -317,15 +313,12 @@ export const generateCommentsBatch = async (
         model: modelName,
         contents: JSON.stringify(studentPayload),
         config: {
-          systemInstruction: systemInstruction,
+          systemInstruction: prompt,
           responseMimeType: "application/json",
           responseSchema: outputSchema,
-          // TẮT BỘ LỌC AN TOÀN ĐỂ KHÔNG CHẶN NHẬN XÉT TIÊU CỰC
           safetySettings: [
-             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-             { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-             { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+             { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+             { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
           ]
         },
       });
@@ -337,7 +330,6 @@ export const generateCommentsBatch = async (
       try {
           parsedResults = JSON.parse(resultText);
       } catch {
-          // Fallback: Tìm mảng JSON trong text hỗn loạn
           try {
               let jsonStr = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
               const firstBracket = jsonStr.indexOf('[');
