@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trợ lý Nhận xét Học bạ</title>
     
-    <!-- 1. CÁC THƯ VIỆN CỐT LÕI -->
+    <!-- 1. CÁC THƯ VIỆN CỐT LÕI (React, Excel, PDF) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -23,7 +23,7 @@
         .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        /* Scrollbar */
+        
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -40,18 +40,22 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 
-    <!-- 3. CẤU HÌNH AI (Fix lỗi Constructor) -->
+    <!-- 3. CẤU HÌNH AI (QUAN TRỌNG: Không dùng importmap) -->
     <script>
-        // Polyfill cho môi trường Browser để thư viện AI hoạt động
+        // Polyfill cho môi trường Browser
         window.process = { env: { NODE_ENV: 'production' } };
     </script>
     <script type="module">
-        // Dùng esm.sh với ?bundle để đảm bảo load đúng Class
-        import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.1.2";
+        // Tải thư viện AI từ esm.sh (Bản ổn định 0.2.1)
+        import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@0.2.1";
         
-        // Gán vào window để code React bên dưới dùng được
+        // Gán vào window
         window.GoogleGenAI = GoogleGenAI;
         window.GoogleGenAIType = Type;
+        
+        // Đánh dấu đã tải xong
+        window.AI_LOADED = true;
+        console.log("Google GenAI Library Loaded Successfully");
     </script>
 <script type="importmap">
 {
@@ -88,10 +92,10 @@
         const TeacherRole = { SUBJECT: 'GVBM', HOMEROOM: 'GVCN' };
         const SUBJECTS = ["Toán", "Văn", "LS & ĐL", "KHTN", "Tin học", "Ng.ngữ", "GDCD", "C.nghệ", "GDTC", "Nghệ thuật", "NDGDCĐP", "HĐTN&HN", "Khác ..."];
         
-        // Danh sách Model để thử (Ưu tiên bản ổn định trước)
+        // Danh sách Model
         const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
 
-        // --- LOGIC EXCEL (GIỮ NGUYÊN) ---
+        // --- HELPER FUNCTIONS ---
         const isNamePart = (val) => {
             if (typeof val !== 'string') return false;
             const str = val.trim();
@@ -187,47 +191,41 @@
             } catch (e) { console.error(e); return { students: [] }; }
         };
 
-        // --- CẤU HÌNH AI THÔNG MINH ---
+        // --- AI LOGIC ---
         const getAIClient = (key) => {
             if (!key) throw new Error("MISSING_API_KEY");
-            
-            // KIỂM TRA KỸ HƠN ĐỂ BÁO LỖI RÕ RÀNG
-            if (!window.GoogleGenAI) throw new Error("Thư viện AI chưa tải xong. Vui lòng tải lại trang (F5).");
-            if (typeof window.GoogleGenAI !== 'function') throw new Error("Lỗi thư viện AI (Not a constructor).");
-
-            return new window.GoogleGenAI({ apiKey: key });
+            if (!window.GoogleGenAI || !window.AI_LOADED) {
+                throw new Error("Thư viện AI chưa tải xong. Vui lòng kiểm tra mạng và nhấn F5 để tải lại.");
+            }
+            try {
+                return new window.GoogleGenAI({ apiKey: key });
+            } catch (e) {
+                console.error("Init Error:", e);
+                throw new Error("Lỗi khởi tạo AI: " + e.message);
+            }
         };
 
         const testApiConnection = async (apiKey) => {
-            const ai = getAIClient(apiKey); // Sử dụng hàm wrapper để check lỗi constructor
+            const ai = getAIClient(apiKey);
             let lastError = null;
 
-            // Thử lần lượt các model để tìm cái nào Key này dùng được
             for (const model of CANDIDATE_MODELS) {
                 try {
-                    await ai.models.generateContent({ 
-                        model: model, 
-                        contents: "Hello" 
-                    });
-                    // Nếu thành công, lưu lại model này để dùng sau
+                    await ai.models.generateContent({ model: model, contents: "Hello" });
                     localStorage.setItem('GEMINI_ACTIVE_MODEL', model);
                     return true;
                 } catch (e) {
                     lastError = e;
                     const msg = e.message || "";
-                    if (msg.includes("400") || msg.includes("INVALID_ARGUMENT") || msg.includes("API_KEY_INVALID") || msg.includes("403")) {
-                        throw e;
-                    }
+                    if (msg.includes("400") || msg.includes("INVALID") || msg.includes("403")) throw e;
                 }
             }
-            throw lastError; // Ném lỗi cuối cùng nếu tất cả đều thất bại
+            throw lastError;
         };
 
         const generateCommentsBatch = async (students, role, subjectName) => {
             const key = localStorage.getItem('GEMINI_API_KEY');
             const ai = getAIClient(key);
-            
-            // Dùng model đã test thành công, hoặc mặc định là bản ổn định nhất
             const model = localStorage.getItem('GEMINI_ACTIVE_MODEL') || CANDIDATE_MODELS[0];
             
             const wordLimit = role === TeacherRole.SUBJECT ? 12 : 20;
@@ -253,7 +251,6 @@
                 : { id: s.id, name: s.name, kqht: s.academicResult, kqrl: s.conductRating, absences: s.absences }
             );
 
-            // Retry nếu server bận
             let retries = 3;
             while (retries > 0) {
                 try {
@@ -395,7 +392,7 @@
             );
         };
 
-        // --- COMPONENT: STUDENT LIST (GIỮ NGUYÊN) ---
+        // --- COMPONENT: STUDENT LIST ---
         const StudentList = ({ students, role, subjectName, onUpdate, onGenOne, onGenAll, onDelete, onChangeSubject, isGen }) => {
             const tableRef = useRef();
             const [colWidths, setColWidths] = useState({ stt: 50, name: 200, result: 150, comment: 400, action: 120 });
